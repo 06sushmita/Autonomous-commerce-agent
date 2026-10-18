@@ -1,0 +1,36 @@
+{
+  "name": "autonomous-commerce-agent",
+  "version": "1.0.0",
+  "description": "Autonomous Commerce Agent built on @agorio/sdk with Swiggy and Zepto MCP Servers, Prava AP2 Biometric Passkeys, and Neon PostgreSQL",
+  "type": "module",
+  "scripts": {
+    "dev": "tsx watch src/dev-server.ts",
+    "start": "tsx src/dev-server.ts",
+    "auth:swiggy": "tsx scripts/auth-swiggy.ts",
+    "auth:zepto": "tsx scripts/auth-zepto.ts",
+    "build": "tsc",
+    "test": "vitest run",
+    "test:watch": "vitest",
+    "typecheck": "tsc --noEmit",
+    "db:generate": "drizzle-kit generate",
+    "db:push": "drizzle-kit push"
+  },
+  "dependencies": {
+    "@agorio/plugin-approval-workflow": "^1.0.0",
+    "@agorio/plugin-audit-trail": "^1.0.0",
+    "@agorio/plugin-spending-controls": "^1.0.0",
+    "@agorio/sdk": "^0.9.0",
+    "@modelcontextprotocol/sdk": "^1.32.1",
+    "@neondatabase/serverless": "^0.10.4",
+    "dotenv": "^16.4.7",
+    "drizzle-orm": "^0.38.4",
+    "zod": "^3.24.2"
+  },
+  "devDependencies": {
+    "@types/node": "^22.13.4",
+    "drizzle-kit": "^0.30.4",
+    "tsx": "^4.23.15",
+    "typescript": "^5.7.3",
+    "vitest": "^3.0.5"
+  }
+}
