@@ -5,7 +5,7 @@
 
 import { Ap2Client, CartLineItem, CartMandate, verifyMandateShape } from '@agorio/sdk';
 import { QuickCommerceBasketProposal } from '../mcp/types.js';
-import { pravaClient, PasskeyChallengeResponse, PravaPaymentsClient } from './client.js';
+import { getPravaClient, PasskeyChallengeResponse, PravaAuthorizationProvider } from './client.js';
 
 export interface PendingMandateBundle {
   mandateId: string;
@@ -14,14 +14,19 @@ export interface PendingMandateBundle {
   merchantId: string;
   amountCents: number;
   currency: string;
+  userId: string;
   expiresAt: Date;
 }
 
 export class Ap2PravaBridge {
-  private prava: PravaPaymentsClient;
+  private pravaOverride?: PravaAuthorizationProvider;
 
-  constructor(prava = pravaClient) {
-    this.prava = prava;
+  constructor(prava?: PravaAuthorizationProvider) {
+    this.pravaOverride = prava;
+  }
+
+  private getPrava(): PravaAuthorizationProvider {
+    return this.pravaOverride || getPravaClient();
   }
 
   /**
@@ -46,13 +51,16 @@ export class Ap2PravaBridge {
     });
 
     // 2. Map basket items to AP2 CartLineItems
-    const lineItems: CartLineItem[] = proposal.items.map((item) => ({
-      productId: item.itemId,
-      name: item.name,
-      quantity: item.quantity,
-      unitPrice: (item.unitPriceCents / 100).toFixed(2),
-      currency: proposal.currency,
-    }));
+    const lineItems: CartLineItem[] = proposal.items.map((item) => {
+      const pricePaise = item.unitPriceCents ?? (item as any).priceCents ?? 0;
+      return {
+        productId: item.itemId || item.id,
+        name: item.name,
+        quantity: item.quantity || 1,
+        unitPrice: (pricePaise / 100).toFixed(2),
+        currency: proposal.currency,
+      };
+    });
 
     if (proposal.deliveryFeeCents > 0) {
       lineItems.push({
@@ -83,7 +91,7 @@ export class Ap2PravaBridge {
     }
 
     // 5. Request FIDO WebAuthn passkey challenge from Prava
-    const challenge = await this.prava.createPasskeyChallenge({
+    const challenge = await this.getPrava().createPasskeyChallenge({
       mandateId: cartMandate.mandateId,
       merchantId,
       amountCents: proposal.totalAmountCents,
@@ -98,6 +106,7 @@ export class Ap2PravaBridge {
       merchantId,
       amountCents: proposal.totalAmountCents,
       currency: proposal.currency,
+      userId,
       expiresAt: new Date(cartMandate.expiresAt),
     };
   }
@@ -110,6 +119,23 @@ export class Ap2PravaBridge {
     signature: string,
     keyId = 'fido2-user-key-01'
   ) {
+    if (!signature || typeof signature !== 'string' || signature.trim() === '') {
+      throw new Error('SignedMandate verification failed: signature is missing or empty');
+    }
+
+    if (!cartMandate.expiresAt) {
+      throw new Error('SignedMandate verification failed: missing expiration timestamp');
+    }
+
+    const expiryTime = new Date(cartMandate.expiresAt).getTime();
+    if (isNaN(expiryTime) || expiryTime <= Date.now()) {
+      throw new Error('SignedMandate verification failed: mandate has expired');
+    }
+
+    if (!cartMandate.mandateId || !cartMandate.amount || !cartMandate.lineItems || cartMandate.lineItems.length === 0) {
+      throw new Error('SignedMandate verification failed: invalid mandate structure');
+    }
+
     const signedMandate = {
       mandate: cartMandate,
       signature,

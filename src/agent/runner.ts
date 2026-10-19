@@ -22,10 +22,13 @@ import { createAuditTrailPlugin, AuditEntry } from '@agorio/plugin-audit-trail';
 import { DeliveryLocation, QuickCommerceBasketProposal, OrderCheckoutResult } from '../mcp/types.js';
 import { quickCommerceMcpManager } from '../mcp/mcp-manager.js';
 import { ap2PravaBridge, PendingMandateBundle } from '../prava/ap2-bridge.js';
-import { pravaClient, PasskeyVerificationRequest } from '../prava/client.js';
+import { getPravaClient, PasskeyVerificationRequest } from '../prava/client.js';
 import { orderValidator } from './order-validator.js';
 import { authProvider, AuthUser } from '../auth/index.js';
 import { spendTracker } from '../db/spend-tracker.js';
+import { getDb } from '../db/client.js';
+import { mandates as schemaMandates, transactions as schemaTransactions } from '../db/schema.js';
+import { eq, and } from 'drizzle-orm';
 
 export interface AgentSessionState {
   sessionId: string;
@@ -57,13 +60,25 @@ export interface CheckoutExecutionResult {
   pravaTokenRef: string;
 }
 
+interface IdempotencyRecord {
+  userId: string;
+  mandateId: string;
+  merchantId: string;
+  amountCents: number;
+  result: CheckoutExecutionResult;
+}
+
 export class AutonomousCommerceRunner {
   private sessions: Map<string, AgentSessionState> = new Map();
   private auditLogRecords: AuditEntry[] = [];
   // Store consumed mandate IDs in memory to enforce single-use guarantee
   private consumedMandates: Set<string> = new Set();
+  // In-flight claims to prevent race conditions during concurrent checkouts
+  private inFlightClaims: Set<string> = new Set();
   // Store recorded transactions to enforce unique mandate_id constraint
-  private transactionLedger: Map<string, { transactionId: string; mandateId: string; order: OrderCheckoutResult }> = new Map();
+  private transactionLedger: Map<string, CheckoutExecutionResult> = new Map();
+  // Idempotency ledger mapping stable key to immutable execution parameters and result
+  private idempotencyLedger: Map<string, IdempotencyRecord> = new Map();
 
   /**
    * Initialize a new conversational shopping session
@@ -223,77 +238,206 @@ export class AutonomousCommerceRunner {
   public async authorizeAndExecuteCheckout(
     sessionId: string,
     mandateId: string,
-    verification: PasskeyVerificationRequest
+    verification: PasskeyVerificationRequest,
+    idempotencyKey?: string,
+    requestingUserId?: string
   ): Promise<CheckoutExecutionResult> {
     const session = this.sessions.get(sessionId);
     if (!session) {
       throw new Error(`Session not found: ${sessionId}`);
     }
 
-    // 1. Double-spend prevention check (enforces single-use mandate guarantee)
-    if (this.consumedMandates.has(mandateId) || this.transactionLedger.has(mandateId)) {
-      throw new Error(`Financial safety violation: Mandate ${mandateId} has already been consumed and cannot be reused.`);
+    // 0a. Authentication invariant: User cannot order before signing up
+    if (!session.user || session.user.id === 'guest' || session.user.id === 'unauthenticated') {
+      throw new Error('Authentication Required: User must be signed up and authenticated to execute checkout.');
+    }
+
+    // 0b. Cross-user authorization check
+    if (requestingUserId && session.user.id !== requestingUserId && session.user.clerkUserId !== requestingUserId) {
+      throw new Error('Forbidden: Session does not belong to the requesting user.');
+    }
+
+    // 0b. Idempotency Check & Payload Invariance Validation
+    if (idempotencyKey) {
+      const existing = this.idempotencyLedger.get(idempotencyKey);
+      if (existing) {
+        if (
+          existing.userId !== session.user.id ||
+          existing.mandateId !== mandateId
+        ) {
+          throw new Error(
+            `Idempotency violation: Idempotency key "${idempotencyKey}" was previously submitted with different checkout parameters.`
+          );
+        }
+        return existing.result;
+      }
+    }
+
+    // 0c. Double-spend prevention and race-condition check (Enforces mandate single-use guarantee)
+    if (
+      this.consumedMandates.has(mandateId) ||
+      this.inFlightClaims.has(mandateId) ||
+      this.transactionLedger.has(mandateId)
+    ) {
+      throw new Error(
+        `Financial safety violation: Mandate ${mandateId} has already been consumed and cannot be reused.`
+      );
+    }
+
+    // Synchronously lock mandate in-flight before any async yields
+    this.inFlightClaims.add(mandateId);
+
+    const db = getDb();
+    if (db) {
+      try {
+        const dbMandate = await db.query.mandates.findFirst({
+          where: eq(schemaMandates.mandateId, mandateId),
+        });
+        if (dbMandate && dbMandate.status === 'consumed') {
+          this.consumedMandates.add(mandateId);
+          this.inFlightClaims.delete(mandateId);
+          throw new Error(
+            `Financial safety violation: Mandate ${mandateId} has already been consumed and cannot be reused.`
+          );
+        }
+      } catch (err: any) {
+        if (err.message.includes('Financial safety violation')) throw err;
+      }
     }
 
     const bundle = session.pendingMandate;
     if (!bundle || bundle.mandateId !== mandateId) {
+      this.inFlightClaims.delete(mandateId);
       throw new Error(`Invalid or missing mandate: ${mandateId}`);
     }
 
-    // 2. Expiration check (10-minute window)
+    // 1a. User identity binding verification
+    if (bundle.userId && bundle.userId !== session.user.id) {
+      throw new Error('Authorization violation: Mandate was issued to a different user.');
+    }
+
+    // 1b. Purchase facts binding verification
+    if (session.activeProposal) {
+      const proposalMerchant = session.activeProposal.platform === 'swiggy_instamart' ? 'swiggy' : 'zepto';
+      if (bundle.merchantId !== proposalMerchant) {
+        throw new Error(
+          `Purchase binding mismatch: Mandate merchant (${bundle.merchantId}) does not match cart merchant (${proposalMerchant}). Fresh authorization required.`
+        );
+      }
+      if (bundle.amountCents !== session.activeProposal.totalAmountCents) {
+        throw new Error(
+          `Purchase binding mismatch: Mandate amount (${bundle.amountCents}) does not match cart total (${session.activeProposal.totalAmountCents}). Fresh authorization required.`
+        );
+      }
+      if (bundle.currency !== session.activeProposal.currency) {
+        throw new Error(
+          `Purchase binding mismatch: Mandate currency (${bundle.currency}) does not match cart currency (${session.activeProposal.currency}). Fresh authorization required.`
+        );
+      }
+    }
+
+    // 3. Expiration check (10-minute window)
     if (new Date() > bundle.expiresAt) {
       throw new Error('Biometric approval window has expired (10-minute limit). Please request a fresh proposal.');
     }
 
-    // 3. Cryptographically shape-check the signed mandate
-    ap2PravaBridge.buildAndVerifySignedMandate(bundle.cartMandate, verification.signature);
-
-    // 4. Verify passkey signature via Prava and retrieve single-use payment token reference
-    const tokenResponse = await pravaClient.verifyPasskeyAndIssueToken(
-      verification,
-      bundle.merchantId,
+    // 4. Reserve budget atomically before any external calls
+    const spendReservation = spendTracker.reserveSpend(
+      session.user.id,
       bundle.amountCents,
-      bundle.currency
+      mandateId,
+      session.user.dailySpendLimitCents
     );
-
-    if (!tokenResponse.success || !tokenResponse.pravaTokenRef) {
-      throw new Error('Biometric passkey signature verification failed with Prava payments.');
+    if (!spendReservation.allowed) {
+      throw new Error(spendReservation.reason || 'Daily spend limit exceeded.');
     }
 
-    // 4. Autonomous checkout via Quick-Commerce MCP
+    // Mark mandate in-flight
+    this.inFlightClaims.add(mandateId);
+
+    let tokenResponse: any;
+    try {
+      // 5. Cryptographically verify the signed mandate
+      ap2PravaBridge.buildAndVerifySignedMandate(bundle.cartMandate, verification.signature);
+
+      // 6. Verify passkey signature via Prava and retrieve single-use payment token reference
+      tokenResponse = await getPravaClient().verifyPasskeyAndIssueToken(
+        verification,
+        bundle.merchantId,
+        bundle.amountCents,
+        bundle.currency
+      );
+
+      if (!tokenResponse.success || !tokenResponse.pravaTokenRef) {
+        throw new Error('Biometric passkey signature verification failed with Prava payments.');
+      }
+    } catch (authErr: any) {
+      this.inFlightClaims.delete(mandateId);
+      spendTracker.releaseReservation(mandateId);
+      throw authErr;
+    }
+
+    // 7. Autonomous checkout via Quick-Commerce MCP
     const platform = bundle.merchantId === 'swiggy' ? 'swiggy_instamart' : 'zepto';
-    const checkoutResult = await quickCommerceMcpManager.executePlatformCheckout(
-      platform,
-      session.activeProposal!.cartId,
-      tokenResponse.pravaTokenRef
-    );
+    let checkoutResult: any;
+    try {
+      checkoutResult = await quickCommerceMcpManager.executePlatformCheckout(
+        platform,
+        session.activeProposal!.cartId,
+        tokenResponse.pravaTokenRef
+      );
+    } catch (checkoutErr: any) {
+      this.inFlightClaims.delete(mandateId);
+      spendTracker.releaseReservation(mandateId);
+      throw checkoutErr;
+    }
 
     if (!checkoutResult.success) {
+      this.inFlightClaims.delete(mandateId);
+      spendTracker.releaseReservation(mandateId);
       throw new Error(`Checkout failed at merchant ${platform}`);
     }
 
-    // 5. Atomic transaction settlement
+    // 8. Atomic transaction settlement
     const transactionId = `tx_${crypto.randomUUID()}`;
     this.consumedMandates.add(mandateId);
-    this.transactionLedger.set(mandateId, {
-      transactionId,
-      mandateId,
-      order: checkoutResult,
-    });
+    this.inFlightClaims.delete(mandateId);
 
-    // Record completed transaction for rolling 24h spend calculation
-    spendTracker.recordCompletedTransaction(session.user.id, bundle.amountCents);
-
-    session.consumedMandateId = mandateId;
-    session.pendingMandate = undefined;
-
-    return {
+    const result: CheckoutExecutionResult = {
       success: true,
       order: checkoutResult,
       mandateId,
       transactionId,
       pravaTokenRef: tokenResponse.pravaTokenRef,
     };
+
+    this.transactionLedger.set(mandateId, result);
+    if (idempotencyKey) {
+      this.transactionLedger.set(idempotencyKey, result);
+      this.idempotencyLedger.set(idempotencyKey, {
+        userId: session.user.id,
+        mandateId,
+        merchantId: bundle.merchantId,
+        amountCents: bundle.amountCents,
+        result,
+      });
+    }
+
+    // Commit spend reservation permanently
+    spendTracker.commitReservation(mandateId, session.user.id, bundle.amountCents);
+
+    // Persist consumption to database if available
+    if (db) {
+      db.update(schemaMandates)
+        .set({ status: 'consumed', consumedAt: new Date() })
+        .where(eq(schemaMandates.mandateId, mandateId))
+        .catch((dbErr) => console.warn('DB mandate update note:', dbErr.message));
+    }
+
+    session.consumedMandateId = mandateId;
+    session.pendingMandate = undefined;
+
+    return result;
   }
 
   /**
@@ -301,39 +445,58 @@ export class AutonomousCommerceRunner {
    */
   private parseQueryToGroceryItems(query: string): Array<{ name: string; quantity: number }> {
     const items: Array<{ name: string; quantity: number }> = [];
-    const lower = query.toLowerCase();
 
-    if (lower.includes('milk')) {
-      const match = lower.match(/(\d+)\s*(l|litre|packet|can)?\s*milk/);
-      items.push({ name: 'milk', quantity: match ? parseInt(match[1], 10) : 1 });
-    }
-    if (lower.includes('bread')) {
-      items.push({ name: 'bread', quantity: 1 });
-    }
-    if (lower.includes('egg') || lower.includes('eggs')) {
-      items.push({ name: 'eggs', quantity: 1 });
-    }
-    if (lower.includes('butter')) {
-      items.push({ name: 'butter', quantity: 1 });
-    }
+    // 1. Strip conversational lead-ins and trailing delivery/time/merchant constraints
+    let clean = query
+      .replace(/^(?:find|search|get|order|buy|show|look for|fetch|i want|please get me|bring me)\s+(?:me\s+)?/i, '')
+      .replace(/\s+(?:in under \d+ mins?|in \d+ mins?|under \d+ mins?|fast|urgent|quickly|asap|from swiggy|from zepto|near me)\.?$/i, '')
+      .trim();
 
-    // If none of the specific preset keywords matched, parse the real requested product
-    if (items.length === 0) {
-      let clean = query
-        .replace(/^(?:find|search|get|order|buy|show|look for|fetch|i want|please get me|bring me)\s+(?:me\s+)?/i, '')
-        .replace(/\s+(?:in under \d+ mins?|in \d+ mins?|fast|urgent|quickly|asap|from swiggy|from zepto|near me)$/i, '')
-        .trim();
+    // 2. Split multiple items by "and", "&", "+", or comma (handling Oxford commas like "milk, bread, and eggs")
+    const rawSegments = clean
+      .split(/(?:,\s*(?:and\s+)?|\s+and\s+|\s*&\s*|\s*\+\s*)/i)
+      .map((s) => s.trim())
+      .filter(Boolean);
 
-      const qtyMatch = clean.match(/^(\d+)\s*(?:packets?|pcs?|pieces?|bottles?|cans?|packs?|boxes?)?\s*(?:of\s+)?(.+)$/i);
-      if (qtyMatch) {
-        const qty = parseInt(qtyMatch[1], 10);
-        const name = qtyMatch[2].trim();
-        items.push({ name: name || clean, quantity: isNaN(qty) || qty <= 0 ? 1 : qty });
-      } else if (clean.length > 0) {
-        items.push({ name: clean, quantity: 1 });
+    for (const segment of rawSegments) {
+      let seg = segment;
+      let qty = 1;
+
+      // Handle leading quantity with packaging word, e.g. "2 packets of milk", "1 packet milk", "6 pcs eggs"
+      const leadingPacketMatch = seg.match(/^(\d+)\s*(?:packets?|pcs?|pieces?|bottles?|cans?|packs?|boxes?|cartons?|loaf|loaves)\s*(?:of\s+)?(.+)$/i);
+      if (leadingPacketMatch) {
+        qty = parseInt(leadingPacketMatch[1], 10) || 1;
+        seg = leadingPacketMatch[2].trim();
       } else {
-        items.push({ name: 'groceries', quantity: 1 });
+        // Handle trailing quantity/packaging, e.g. "eggs 6 pcs", "eggs 6", "milk 2 packets"
+        const trailingQtyMatch = seg.match(/^(.+?)\s+(\d+)\s*(?:packets?|pcs?|pieces?|bottles?|cans?|packs?|boxes?|cartons?|loaf|loaves)?$/i);
+        if (trailingQtyMatch && !/^\d+\s*(?:l|litre|liter|ml|g|kg|oz)\b/i.test(trailingQtyMatch[2])) {
+          qty = parseInt(trailingQtyMatch[2], 10) || 1;
+          seg = trailingQtyMatch[1].trim();
+        } else {
+          // Handle leading plain number, e.g. "2 milk" (but not volume like "1L milk")
+          const countMatch = seg.match(/^(\d+)\s+([a-zA-Z].+)$/);
+          if (countMatch && !/^\d+\s*(?:l|litre|liter|ml|g|kg|oz)\b/i.test(seg)) {
+            qty = parseInt(countMatch[1], 10) || 1;
+            seg = countMatch[2].trim();
+          }
+        }
       }
+
+      // If segment matches "milk 1 litre", "1l milk", etc., standardize generic milk
+      if (/^(?:milk\s+(\d+)\s*(?:l|litre|liter)|(\d+)\s*(?:l|litre|liter)\s+milk)$/i.test(seg)) {
+        const m = seg.match(/(\d+)/);
+        qty = m ? parseInt(m[1], 10) : 1;
+        seg = 'milk';
+      }
+
+      if (seg.length > 0) {
+        items.push({ name: seg, quantity: qty });
+      }
+    }
+
+    if (items.length === 0) {
+      items.push({ name: 'groceries', quantity: 1 });
     }
 
     return items;

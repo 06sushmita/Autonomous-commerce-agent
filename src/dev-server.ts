@@ -21,6 +21,7 @@ import {
   DEFAULT_MOCK_USER,
   SUSHMITA_USER,
   DeliveryLocation,
+  AuthUser,
 } from './index.js';
 
 const PORT = process.env.PORT ? parseInt(process.env.PORT, 10) : 3000;
@@ -101,6 +102,25 @@ async function handleRequest(req: http.IncomingMessage, res: http.ServerResponse
 
     // 2. Authentication: Get Current Active User
     if (method === 'GET' && url.pathname === '/api/auth/current') {
+      const requestedId = url.searchParams.get('userId');
+      if (requestedId) {
+        try {
+          const user = authProvider.setActiveUser(requestedId);
+          const spend = spendTracker.getUserSpendProfile(user.id, user.dailySpendLimitCents);
+          const { password, ...safeUser } = user;
+          return sendJson(200, {
+            user: safeUser,
+            remainingSpendINR: (spend.remainingDailySpendCents / 100).toFixed(2),
+          });
+        } catch {
+          // not found, fall through
+        }
+      }
+
+      if (url.searchParams.get('guest') === '1') {
+        return sendJson(200, { user: null });
+      }
+
       const user = authProvider.getActiveUser();
       const spend = spendTracker.getUserSpendProfile(user.id, user.dailySpendLimitCents);
       const { password, ...safeUser } = user;
@@ -110,6 +130,11 @@ async function handleRequest(req: http.IncomingMessage, res: http.ServerResponse
       });
     }
 
+    // 2b. Authentication: Log Out
+    if (method === 'POST' && url.pathname === '/api/auth/logout') {
+      return sendJson(200, { success: true, message: 'Logged out successfully.' });
+    }
+
     // 3. Authentication: List Known Users (for quick preset switching)
     if (method === 'GET' && url.pathname === '/api/auth/users') {
       const users = authProvider.listUsers();
@@ -117,6 +142,7 @@ async function handleRequest(req: http.IncomingMessage, res: http.ServerResponse
     }
 
     // 4. Authentication: Log In
+    // 4. Authentication: Log In (with Clerk & Neon DB synchronization)
     if (method === 'POST' && url.pathname === '/api/auth/login') {
       const body = await readJson();
       const { emailOrPhone, password } = body;
@@ -124,29 +150,43 @@ async function handleRequest(req: http.IncomingMessage, res: http.ServerResponse
         return sendJson(400, { error: 'Email or phone number is required.' });
       }
       try {
-        const user = authProvider.loginUser(emailOrPhone, password);
+        const user = await authProvider.loginWithClerk(emailOrPhone, password);
         const { password: _, ...safeUser } = user;
-        return sendJson(200, { success: true, user: safeUser });
+        const spend = spendTracker.getUserSpendProfile(user.id, user.dailySpendLimitCents);
+        return sendJson(200, {
+          success: true,
+          user: safeUser,
+          clerkUserId: user.clerkUserId,
+          remainingSpendINR: (spend.remainingDailySpendCents / 100).toFixed(2),
+        });
       } catch (e: any) {
         return sendJson(401, { error: e.message || 'Login failed.' });
       }
     }
 
-    // 5. Authentication: Sign Up
+    // 5. Authentication: Sign Up (registers directly with Clerk & saves to Neon PostgreSQL)
     if (method === 'POST' && url.pathname === '/api/auth/signup') {
       const body = await readJson();
       try {
-        const newUser = authProvider.registerUser({
+        const newUser = await authProvider.registerWithClerk({
           displayName: body.displayName,
           email: body.email,
           phone: body.phone,
           password: body.password,
           address: body.address,
           pincode: body.pincode,
+          latitude: body.latitude ? parseFloat(body.latitude) : undefined,
+          longitude: body.longitude ? parseFloat(body.longitude) : undefined,
           dailySpendLimitINR: body.dailySpendLimitINR ? parseFloat(body.dailySpendLimitINR) : 5000,
         });
         const { password: _, ...safeUser } = newUser;
-        return sendJson(201, { success: true, user: safeUser });
+        const spend = spendTracker.getUserSpendProfile(newUser.id, newUser.dailySpendLimitCents);
+        return sendJson(201, {
+          success: true,
+          user: safeUser,
+          clerkUserId: newUser.clerkUserId,
+          remainingSpendINR: (spend.remainingDailySpendCents / 100).toFixed(2),
+        });
       } catch (e: any) {
         return sendJson(400, { error: e.message || 'Registration failed.' });
       }
@@ -159,9 +199,103 @@ async function handleRequest(req: http.IncomingMessage, res: http.ServerResponse
       try {
         const user = authProvider.setActiveUser(userId);
         const { password: _, ...safeUser } = user;
-        return sendJson(200, { success: true, user: safeUser });
+        const spend = spendTracker.getUserSpendProfile(user.id, user.dailySpendLimitCents);
+        return sendJson(200, {
+          success: true,
+          user: safeUser,
+          clerkUserId: user.clerkUserId,
+          remainingSpendINR: (spend.remainingDailySpendCents / 100).toFixed(2),
+        });
       } catch (e: any) {
         return sendJson(404, { error: e.message });
+      }
+    }
+
+    // 6a. Wallet & Spend Limit Management: Get Spend Profile
+    if (method === 'GET' && (url.pathname === '/api/me/wallet' || url.pathname === '/api/wallet')) {
+      const user = authProvider.getActiveUser();
+      const spend = spendTracker.getUserSpendProfile(user.id, user.dailySpendLimitCents);
+      const { password: _, ...safeUser } = user;
+      return sendJson(200, {
+        user: safeUser,
+        clerkUserId: user.clerkUserId,
+        dailySpendLimitCents: user.dailySpendLimitCents,
+        dailyLimitINR: (user.dailySpendLimitCents / 100).toFixed(2),
+        spentLast24hINR: (spend.rolling24hSpentCents / 100).toFixed(2),
+        remainingSpendINR: (spend.remainingDailySpendCents / 100).toFixed(2),
+      });
+    }
+
+    // 6b. Wallet & Spend Limit Management: Edit Wallet Budget
+    if ((method === 'PATCH' || method === 'POST') && (url.pathname === '/api/me/wallet' || url.pathname === '/api/wallet/budget')) {
+      const body = await readJson();
+      let user = authProvider.getActiveUser();
+
+      if (body.userId) {
+        try {
+          user = authProvider.setActiveUser(body.userId);
+        } catch {
+          // fallback to active user if available
+        }
+      }
+
+      const newLimitINR = body.dailySpendLimitINR !== undefined ? parseFloat(body.dailySpendLimitINR) : undefined;
+      const newLimitCents = body.dailySpendLimitCents !== undefined
+        ? parseInt(body.dailySpendLimitCents, 10)
+        : newLimitINR !== undefined
+        ? Math.round(newLimitINR * 100)
+        : null;
+
+      if (!newLimitCents || isNaN(newLimitCents)) {
+        return sendJson(400, { error: 'Valid dailySpendLimitINR or dailySpendLimitCents is required.' });
+      }
+
+      try {
+        const updatedUser = authProvider.updateUserDailySpendLimit(user.id, newLimitCents);
+        const spend = spendTracker.getUserSpendProfile(updatedUser.id, updatedUser.dailySpendLimitCents);
+        const { password: _, ...safeUser } = updatedUser;
+        return sendJson(200, {
+          success: true,
+          message: `Daily wallet budget successfully updated to ₹${(newLimitCents / 100).toFixed(2)}`,
+          dailyLimitINR: (newLimitCents / 100).toFixed(2),
+          dailySpendLimitCents: newLimitCents,
+          remainingSpendINR: (spend.remainingDailySpendCents / 100).toFixed(2),
+          user: safeUser,
+        });
+      } catch (err: any) {
+        return sendJson(400, { error: err.message || 'Failed to update wallet limit.' });
+      }
+    }
+
+    // 6c. Dynamic Delivery Address Management: Change Address
+    if ((method === 'PATCH' || method === 'POST') && (url.pathname === '/api/me/address' || url.pathname === '/api/address')) {
+      const body = await readJson();
+      const user = authProvider.getActiveUser();
+
+      if (body.userId && body.userId !== user.id && body.userId !== user.clerkUserId) {
+        return sendJson(403, { error: "Forbidden: Cannot modify another user's delivery location." });
+      }
+
+      const { address, pincode, latitude, longitude } = body;
+      if (!address || !pincode) {
+        return sendJson(400, { error: 'Address and pincode are required.' });
+      }
+      try {
+        const updatedUser = authProvider.updateUserDeliveryLocation(
+          user.id,
+          address.trim(),
+          pincode.trim(),
+          latitude ? parseFloat(latitude) : undefined,
+          longitude ? parseFloat(longitude) : undefined
+        );
+        const { password: _, ...safeUser } = updatedUser;
+        return sendJson(200, {
+          success: true,
+          message: `Delivery address updated to: ${address} (${pincode})`,
+          user: safeUser,
+        });
+      } catch (err: any) {
+        return sendJson(400, { error: err.message || 'Failed to update delivery address.' });
       }
     }
 
@@ -169,9 +303,26 @@ async function handleRequest(req: http.IncomingMessage, res: http.ServerResponse
     if (method === 'POST' && url.pathname === '/api/chat') {
       const body = await readJson();
       const query = (body.message || body.query || 'milk').trim();
-      const user = body.userId
-        ? await authProvider.getAuthenticatedUser(body.userId)
-        : authProvider.getActiveUser();
+
+      // STRICT CONSTRAINT: Do not allow shopping turn or order creation before signing up
+      if (!body.userId || body.userId === 'guest') {
+        return sendJson(401, {
+          error: 'Authentication Required: You cannot search or place orders before signing up or logging in with Clerk.',
+          requiresAuth: true,
+          requiresSignup: true,
+        });
+      }
+
+      let user: AuthUser;
+      try {
+        user = await authProvider.getAuthenticatedUser(body.userId);
+      } catch (authErr: any) {
+        return sendJson(401, {
+          error: `Authentication Required: ${authErr.message || 'Please sign up or log in with Clerk.'}`,
+          requiresAuth: true,
+          requiresSignup: true,
+        });
+      }
 
       const userLocation: DeliveryLocation = {
         address: user.defaultAddress,
@@ -311,8 +462,32 @@ async function handleRequest(req: http.IncomingMessage, res: http.ServerResponse
     // 9. Biometric Passkey Checkout Execution (AP2 + Prava token -> Confirmed Order)
     if (method === 'POST' && url.pathname === '/api/checkout') {
       const body = await readJson();
-      const { sessionId, mandateId } = body;
-      const user = authProvider.getActiveUser();
+      const { sessionId, mandateId, userId } = body;
+
+      // STRICT CONSTRAINT: Do not allow checkout/ordering without signing up with Clerk
+      if (!userId || userId === 'guest') {
+        return sendJson(401, {
+          error: 'Authentication Required: You cannot place or authorize orders before signing up or logging in with Clerk.',
+          requiresAuth: true,
+          requiresSignup: true,
+        });
+      }
+
+      let user: AuthUser;
+      try {
+        user = await authProvider.getAuthenticatedUser(userId);
+      } catch (err: any) {
+        return sendJson(401, {
+          error: 'Authentication Required: No valid registered user account found. Please sign up with Clerk first.',
+          requiresAuth: true,
+          requiresSignup: true,
+        });
+      }
+
+      const activeUser = authProvider.getActiveUser();
+      if (user.id !== activeUser.id && user.clerkUserId !== activeUser.clerkUserId) {
+        authProvider.setActiveUser(user.id);
+      }
 
       if (!sessionId || !mandateId) {
         return sendJson(400, { error: 'Missing sessionId or mandateId' });
@@ -327,7 +502,9 @@ async function handleRequest(req: http.IncomingMessage, res: http.ServerResponse
           clientDataJSON: Buffer.from('prava_fido2_client_data').toString('base64url'),
           authenticatorData: Buffer.from('prava_fido2_auth_data').toString('base64url'),
           signature: body.signature || 'prava_biometric_passkey_sig',
-        }
+        },
+        body.idempotencyKey,
+        user.id
       );
 
       return sendJson(200, {
@@ -1400,27 +1577,28 @@ function renderWebDashboard(): string {
       <span class="pill pill-prava"><span class="status-dot"></span> Prava AP2 Passkey</span>
     </div>
 
-    <button class="user-profile-btn" onclick="openAuthModal()">
-      <div class="user-avatar" id="navAvatar">SM</div>
+    <button class="user-profile-btn" onclick="openAccountOrLoginModal()" id="navProfileBtn">
+      <div class="user-avatar" id="navAvatar">👤</div>
       <div class="user-info">
-        <div class="user-name" id="navUserName">Sushmita Mishra <span style="font-size:10px;">▼</span></div>
-        <div class="user-loc" id="navUserLoc">📍 Dombivli West (421202)</div>
+        <div class="user-name" id="navUserName">Sign In with Clerk <span style="font-size:10px;">▼</span></div>
+        <div class="user-loc" id="navUserLoc">Guest Mode</div>
       </div>
     </button>
   </header>
 
   <!-- Main Content Layout -->
   <div class="main-layout">
-    <!-- Active Context Info -->
-    <div class="context-banner">
-      <div class="context-left">
-        <span>👤 Ordering on behalf of: <b id="bannerUserName">Sushmita Mishra</b></span>
+    <!-- Active Context Info with Dynamic Address & Wallet Controls -->
+    <div class="context-banner" id="contextBanner">
+      <div class="context-left" id="bannerContent">
+        <span>👤 <b>Guest Session</b></span>
         <span>•</span>
-        <span>📍 Delivery: <b id="bannerUserAddress">A/30, Sai Anant Darshan, Dombivli West (421202)</b></span>
-        <span>•</span>
-        <span>🛡️ Limit: <b id="bannerUserLimit">₹5,000.00 / day</b></span>
+        <span>Please <b>Sign In</b> or <b>Sign Up with Clerk</b> to configure your wallet budget limit and place orders.</span>
       </div>
-      <button class="btn-auth-switch" onclick="openAuthModal()">Switch / Sign Up</button>
+      <div style="display: flex; gap: 8px;" id="bannerButtons">
+        <button class="btn-auth-switch" style="border-color:#10b981; color:#34d399;" onclick="openSignupModal()">⚡ Sign Up with Clerk</button>
+        <button class="btn-auth-switch" onclick="openLoginModal()">👤 Log In with Clerk</button>
+      </div>
     </div>
 
     <!-- Chat Container -->
@@ -1453,85 +1631,210 @@ function renderWebDashboard(): string {
     </div>
   </div>
 
-  <!-- Auth Modal (Login & Sign Up) -->
-  <div class="modal-overlay" id="authModal">
-    <div class="modal-content">
+  <!-- Wallet & Daily Spend Budget Modal -->
+  <div class="modal-overlay" id="walletModal">
+    <div class="modal-content" style="max-width: 480px;">
       <div class="modal-header">
-        <h2>User Account & Delivery Profile</h2>
-        <button class="modal-close" onclick="closeAuthModal()">✕</button>
+        <h2>💳 Wallet & Daily Spend Budget</h2>
+        <button class="modal-close" onclick="closeWalletModal()">✕</button>
       </div>
-
-      <div class="modal-tabs">
-        <button class="tab-btn active" id="tabLoginBtn" onclick="switchAuthTab('login')">Log In</button>
-        <button class="tab-btn" id="tabSignupBtn" onclick="switchAuthTab('signup')">Sign Up (New User)</button>
-      </div>
-
-      <!-- Log In Form -->
-      <div class="modal-body" id="loginTab">
-        <p style="font-size: 12px; color: var(--text-muted); margin-bottom: 12px;">
-          Select a verified profile or enter your credentials. The autonomous agent will order using this user's dark store address and spending limit.
+      <div class="modal-body">
+        <p style="font-size: 12px; color: var(--text-muted); margin-bottom: 14px;">
+          Adjust your daily autonomous commerce allowance anytime. Changes are saved immediately to your Neon PostgreSQL profile and enforced by the agent guardrails.
         </p>
 
-        <div style="font-size: 11px; font-weight: 700; color: #94a3b8; text-transform: uppercase; margin-bottom: 6px;">Quick Presets:</div>
-        <div class="quick-preset-cards">
-          <div class="preset-card" onclick="quickLogin('sushmita.mishra@example.com', 'password123')">
-            <div class="preset-name">Sushmita Mishra</div>
-            <div class="preset-loc">📍 Dombivli West (421202)</div>
-            <div style="font-size: 10px; color: #10b981; margin-top: 4px;">✓ Swiggy Verified</div>
+        <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 12px; margin-bottom: 16px;">
+          <div style="background: rgba(15, 23, 42, 0.6); padding: 12px; border-radius: 10px; border: 1px solid rgba(59, 130, 246, 0.2);">
+            <div style="font-size: 10px; color: #94a3b8; text-transform: uppercase;">Current Daily Limit</div>
+            <div style="font-size: 20px; font-weight: 800; color: #38bdf8; margin-top: 4px;" id="walletModalLimit">₹5,000.00</div>
           </div>
-          <div class="preset-card" onclick="quickLogin('arjun.sharma@example.com', 'password123')">
-            <div class="preset-name">Arjun Sharma</div>
-            <div class="preset-loc">📍 Bellandur, Bengaluru (560103)</div>
-            <div style="font-size: 10px; color: #3b82f6; margin-top: 4px;">✓ Bengaluru Profile</div>
+          <div style="background: rgba(15, 23, 42, 0.6); padding: 12px; border-radius: 10px; border: 1px solid rgba(16, 185, 129, 0.2);">
+            <div style="font-size: 10px; color: #94a3b8; text-transform: uppercase;">Remaining Today</div>
+            <div style="font-size: 20px; font-weight: 800; color: #10b981; margin-top: 4px;" id="walletModalRemaining">₹5,000.00</div>
           </div>
         </div>
 
         <div class="form-group">
-          <label>Email or Mobile Number</label>
-          <input type="text" id="loginEmail" placeholder="sushmita.mishra@example.com or 9820002845">
+          <label>New Daily Spend Limit (₹)</label>
+          <input type="number" id="walletLimitInput" min="100" max="500000" step="500" value="5000" placeholder="e.g. 10000">
         </div>
-        <div class="form-group">
-          <label>Password</label>
-          <input type="password" id="loginPassword" placeholder="••••••••" value="password123">
+
+        <div style="font-size: 11px; font-weight: 700; color: #94a3b8; text-transform: uppercase; margin-bottom: 8px;">Quick Presets:</div>
+        <div style="display: flex; gap: 8px; flex-wrap: wrap; margin-bottom: 18px;">
+          <button type="button" class="btn-auth-switch" onclick="setBudgetPreset(2500)">₹2,500</button>
+          <button type="button" class="btn-auth-switch" onclick="setBudgetPreset(5000)">₹5,000</button>
+          <button type="button" class="btn-auth-switch" onclick="setBudgetPreset(10000)">₹10,000</button>
+          <button type="button" class="btn-auth-switch" onclick="setBudgetPreset(25000)">₹25,000</button>
+          <button type="button" class="btn-auth-switch" onclick="setBudgetPreset(50000)">₹50,000</button>
         </div>
-        <button class="btn-submit" onclick="submitLogin()">Log In & Set Active User</button>
+
+        <button class="btn-submit" style="background: linear-gradient(135deg, #059669 0%, #10b981 100%);" onclick="submitWalletUpdate()">Save Limit & Update Database</button>
       </div>
+    </div>
+  </div>
 
-      <!-- Sign Up Form -->
-      <div class="modal-body" id="signupTab" style="display: none;">
-        <div class="form-group">
-          <label>Full Name</label>
-          <input type="text" id="signupName" placeholder="e.g. Priya Patel">
-        </div>
-        <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 10px;">
-          <div class="form-group">
-            <label>Email Address</label>
-            <input type="email" id="signupEmail" placeholder="priya@example.com">
+  <!-- Dynamic Delivery Address Modal -->
+  <div class="modal-overlay" id="addressModal">
+    <div class="modal-content" style="max-width: 520px;">
+      <div class="modal-header">
+        <h2>📍 Dynamic Delivery Address</h2>
+        <button class="modal-close" onclick="closeAddressModal()">✕</button>
+      </div>
+      <div class="modal-body">
+        <p style="font-size: 12px; color: var(--text-muted); margin-bottom: 14px;">
+          Pre-set or update your delivery location anytime. The agent immediately routes dark stores on Swiggy and Zepto to this location.
+        </p>
+
+        <div style="font-size: 11px; font-weight: 700; color: #94a3b8; text-transform: uppercase; margin-bottom: 8px;">Quick Locations:</div>
+        <div class="quick-preset-cards" style="margin-bottom: 14px;">
+          <div class="preset-card" onclick="presetAddress('A/30, Sai Anant Darshan, Kopar Rd, Shastri Nagar, Dombivli West, Dombivli, Maharashtra 421202', '421202', 19.2183, 73.0867)">
+            <div class="preset-name">Dombivli West</div>
+            <div class="preset-loc">📍 421202 (Mumbai MMR)</div>
           </div>
-          <div class="form-group">
-            <label>Indian Mobile (+91)</label>
-            <input type="tel" id="signupPhone" placeholder="98XXXXXXXX">
+          <div class="preset-card" onclick="presetAddress('Flat 402, Green Glen Layout, Bellandur, Bengaluru, Karnataka 560103', '560103', 12.9298, 77.6835)">
+            <div class="preset-name">Bellandur, Bengaluru</div>
+            <div class="preset-loc">📍 560103 (Tech Corridor)</div>
+          </div>
+          <div class="preset-card" onclick="presetAddress('Flat 101, Powai Heights, Hiranandani Gardens, Powai, Mumbai, Maharashtra 400076', '400076', 19.1176, 72.9060)">
+            <div class="preset-name">Powai, Mumbai</div>
+            <div class="preset-loc">📍 400076 (Hiranandani)</div>
           </div>
         </div>
+
         <div class="form-group">
-          <label>Delivery Address (Building, Street, Area)</label>
-          <input type="text" id="signupAddress" placeholder="Flat 204, Galaxy Heights, Powai, Mumbai">
+          <label>Street Address</label>
+          <input type="text" id="addressStreetInput" placeholder="Flat / House No, Building, Street, Area">
         </div>
         <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 10px;">
           <div class="form-group">
             <label>Pincode</label>
-            <input type="text" id="signupPincode" placeholder="400076">
+            <input type="text" id="addressPincodeInput" placeholder="421202">
           </div>
           <div class="form-group">
-            <label>Daily Spend Limit (₹)</label>
-            <input type="number" id="signupLimit" value="5000">
+            <label>City / Region</label>
+            <input type="text" id="addressCityInput" placeholder="Mumbai / Maharashtra">
           </div>
+        </div>
+
+        <button class="btn-submit" onclick="submitAddressUpdate()">Update Delivery Location & Dark Stores</button>
+      </div>
+    </div>
+  </div>
+
+  <!-- Clerk Auth Modal (Login & Sign Up) -->
+  <div class="modal-overlay" id="authModal">
+    <div class="modal-content" style="max-width: 520px;">
+      <div class="modal-header">
+        <div>
+          <h2>Clerk User Authentication</h2>
+          <div style="font-size: 11px; color: #10b981; margin-top: 2px;">✓ Powered by Clerk Live Identity & Neon PostgreSQL</div>
+        </div>
+        <button class="modal-close" onclick="closeAuthModal()">✕</button>
+      </div>
+
+      <div class="modal-tabs">
+        <button class="tab-btn active" id="tabLoginBtn" onclick="switchAuthTab('login')">Log In (Clerk)</button>
+        <button class="tab-btn" id="tabSignupBtn" onclick="switchAuthTab('signup')">Sign Up with Clerk</button>
+        <button class="tab-btn" id="tabAccountBtn" onclick="switchAuthTab('account')" style="display: none;">Active Account</button>
+      </div>
+
+      <!-- Log In Form -->
+      <div class="modal-body" id="loginTab">
+        <p style="font-size: 12px; color: var(--text-muted); margin-bottom: 16px;">
+          Sign in with your Clerk credentials. The autonomous agent will authenticate your session and load your delivery address & wallet budget from Neon PostgreSQL.
+        </p>
+
+        <div class="form-group">
+          <label>Email Address or Mobile Number</label>
+          <input type="text" id="loginEmail" placeholder="Enter your email or phone" autocomplete="username">
         </div>
         <div class="form-group">
           <label>Password</label>
-          <input type="password" id="signupPassword" placeholder="Create a password" value="password123">
+          <input type="password" id="loginPassword" placeholder="Enter your password" autocomplete="current-password">
         </div>
-        <button class="btn-submit" onclick="submitSignup()">Create Account & Start Ordering</button>
+        <button class="btn-submit" id="loginSubmitBtn" onclick="submitLogin()">Log In with Clerk</button>
+        <div style="text-align: center; margin-top: 14px; font-size: 12px; color: #94a3b8;">
+          Don't have an account? <a href="javascript:void(0)" onclick="switchAuthTab('signup')" style="color: #38bdf8; font-weight: 600; text-decoration: underline;">Sign Up with Clerk & Set Budget ➔</a>
+        </div>
+      </div>
+
+      <!-- Sign Up Form -->
+      <div class="modal-body" id="signupTab" style="display: none;">
+        <p style="font-size: 12px; color: var(--text-muted); margin-bottom: 14px;">
+          Create a new user account with Clerk. Set your delivery location and daily wallet budget limit to start autonomous commerce ordering.
+        </p>
+        <div class="form-group">
+          <label>Full Name</label>
+          <input type="text" id="signupName" placeholder="e.g. Rahul Sharma" autocomplete="name">
+        </div>
+        <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 10px;">
+          <div class="form-group">
+            <label>Email Address (Clerk)</label>
+            <input type="email" id="signupEmail" placeholder="e.g. rahul@example.com" autocomplete="email">
+          </div>
+          <div class="form-group">
+            <label>Mobile Number (+91)</label>
+            <input type="tel" id="signupPhone" placeholder="e.g. 9876543210" autocomplete="tel">
+          </div>
+        </div>
+        <div class="form-group">
+          <label>Delivery Address</label>
+          <input type="text" id="signupAddress" placeholder="Flat/House No, Building, Street, Locality">
+        </div>
+        <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 10px;">
+          <div class="form-group">
+            <label>Pincode</label>
+            <input type="text" id="signupPincode" placeholder="e.g. 560038 or 400076">
+          </div>
+          <div class="form-group">
+            <label>Password (min 8 chars)</label>
+            <input type="password" id="signupPassword" placeholder="Create a password" autocomplete="new-password">
+          </div>
+        </div>
+
+        <!-- Initial Daily Wallet Budget Limit Section -->
+        <div class="form-group" style="background: rgba(15, 23, 42, 0.6); padding: 14px; border-radius: 10px; border: 1px solid rgba(59, 130, 246, 0.25); margin-top: 10px; margin-bottom: 12px;">
+          <label style="color: #38bdf8; font-weight: 700; font-size: 13px;">💳 Set Daily Wallet Budget Limit (₹)</label>
+          <p style="font-size: 11px; color: #94a3b8; margin: 4px 0 10px 0;">
+            Configure your daily autonomous commerce spending cap. The agent will never exceed this budget without explicit passkey approval. You can modify this limit anytime.
+          </p>
+          <input type="number" id="signupLimit" min="100" max="500000" step="500" value="5000" placeholder="5000" style="font-size: 16px; font-weight: 800; color: #10b981;">
+          <div style="font-size: 10px; color: #94a3b8; text-transform: uppercase; font-weight: 700; margin-top: 10px; margin-bottom: 6px;">Quick Presets:</div>
+          <div style="display: flex; gap: 6px; flex-wrap: wrap;">
+            <button type="button" class="btn-auth-switch" style="padding: 4px 10px; font-size: 11px;" onclick="document.getElementById('signupLimit').value = 2500">₹2,500</button>
+            <button type="button" class="btn-auth-switch" style="padding: 4px 10px; font-size: 11px;" onclick="document.getElementById('signupLimit').value = 5000">₹5,000</button>
+            <button type="button" class="btn-auth-switch" style="padding: 4px 10px; font-size: 11px;" onclick="document.getElementById('signupLimit').value = 10000">₹10,000</button>
+            <button type="button" class="btn-auth-switch" style="padding: 4px 10px; font-size: 11px;" onclick="document.getElementById('signupLimit').value = 25000">₹25,000</button>
+            <button type="button" class="btn-auth-switch" style="padding: 4px 10px; font-size: 11px;" onclick="document.getElementById('signupLimit').value = 50000">₹50,000</button>
+          </div>
+        </div>
+
+        <button class="btn-submit" id="signupSubmitBtn" style="background: linear-gradient(135deg, #059669 0%, #10b981 100%);" onclick="submitSignup()">Sign Up with Clerk & Save Budget</button>
+        <div style="text-align: center; margin-top: 14px; font-size: 12px; color: #94a3b8;">
+          Already have an account? <a href="javascript:void(0)" onclick="switchAuthTab('login')" style="color: #38bdf8; font-weight: 600; text-decoration: underline;">Log In with Clerk ➔</a>
+        </div>
+      </div>
+
+      <!-- Active Account Management Tab -->
+      <div class="modal-body" id="accountTab" style="display: none;">
+        <div style="background: rgba(15, 23, 42, 0.6); padding: 16px; border-radius: 12px; border: 1px solid rgba(59, 130, 246, 0.2); margin-bottom: 16px;">
+          <div style="display: flex; align-items: center; gap: 12px; margin-bottom: 12px;">
+            <div class="user-avatar" id="accountAvatar" style="width: 44px; height: 44px; font-size: 16px;">👤</div>
+            <div>
+              <div style="font-size: 16px; font-weight: 800; color: #fff;" id="accountDisplayName">User Name</div>
+              <div style="font-size: 12px; color: #94a3b8;" id="accountEmail">user@example.com</div>
+            </div>
+          </div>
+          <div style="font-size: 12px; color: #cbd5e1; margin-bottom: 6px;">📍 <b>Delivery Address:</b> <span id="accountAddress">-</span></div>
+          <div style="font-size: 12px; color: #cbd5e1; margin-bottom: 6px;">🛡️ <b>Daily Wallet Budget:</b> <span id="accountLimit" style="color: #10b981; font-weight: 700;">₹5,000.00</span></div>
+          <div style="font-size: 11px; color: #64748b; font-family: monospace;" id="accountClerkId">Clerk ID: -</div>
+        </div>
+
+        <div style="display: flex; flex-direction: column; gap: 10px;">
+          <button class="btn-submit" style="background: linear-gradient(135deg, #059669 0%, #10b981 100%);" onclick="closeAuthModal(); openWalletModal();">💳 Modify Daily Budget Limit</button>
+          <button class="btn-submit" style="background: linear-gradient(135deg, #2563eb 0%, #38bdf8 100%);" onclick="closeAuthModal(); openAddressModal();">📍 Change Delivery Address</button>
+          <button class="btn-submit" style="background: rgba(239, 68, 68, 0.2); color: #f87171; border: 1px solid rgba(239, 68, 68, 0.4);" onclick="logout()">🚪 Sign Out / Switch User</button>
+        </div>
       </div>
     </div>
   </div>
@@ -1553,38 +1856,244 @@ function renderWebDashboard(): string {
     let activeSessionId = null;
     let currentTurnData = null;
 
-    // Load initial user
+    function openLoginModal() { openAuthModal('login'); }
+    function openSignupModal() { openAuthModal('signup'); }
+    function openAccountModal() { openAuthModal('account'); }
+    function openAccountOrLoginModal() { if (activeUser) openAccountModal(); else openLoginModal(); }
+
+    // Load initial user (respects user session in localStorage, defaults to guest without prefilled credentials)
     async function loadCurrentUser() {
+      const savedUserId = localStorage.getItem('aca_active_user_id');
       try {
-        const res = await fetch('/api/auth/current');
+        let endpoint = '/api/auth/current';
+        if (savedUserId) {
+          endpoint += '?userId=' + encodeURIComponent(savedUserId);
+        } else {
+          endpoint += '?guest=1';
+        }
+        const res = await fetch(endpoint);
         const data = await res.json();
-        if (data.user) {
+        if (data && data.user) {
           setUserUI(data.user);
+        } else {
+          setGuestUI();
         }
       } catch (e) {
         console.error('Failed to load user:', e);
+        setGuestUI();
       }
+    }
+
+    function setGuestUI() {
+      activeUser = null;
+      document.getElementById('navAvatar').textContent = '👤';
+      document.getElementById('navUserName').innerHTML = 'Sign In with Clerk <span style="font-size:10px;">▼</span>';
+      document.getElementById('navUserLoc').textContent = 'Guest Mode';
+
+      const bannerContent = document.getElementById('bannerContent');
+      if (bannerContent) {
+        bannerContent.innerHTML =
+          '<span>👤 <b>Guest Session</b></span>' +
+          '<span>•</span>' +
+          '<span>Please <b>Sign In</b> or <b>Sign Up with Clerk</b> to configure your wallet budget limit and place orders.</span>';
+      }
+
+      const bannerButtons = document.getElementById('bannerButtons');
+      if (bannerButtons) {
+        bannerButtons.innerHTML =
+          '<button class="btn-auth-switch" style="border-color:#10b981; color:#34d399;" onclick="openSignupModal()">⚡ Sign Up with Clerk</button>' +
+          '<button class="btn-auth-switch" onclick="openLoginModal()">👤 Log In with Clerk</button>';
+      }
+
+      const tabAcc = document.getElementById('tabAccountBtn');
+      if (tabAcc) tabAcc.style.display = 'none';
     }
 
     function setUserUI(user) {
       activeUser = user;
-      const initials = user.displayName
+      if (user.id) {
+        localStorage.setItem('aca_active_user_id', user.id);
+      }
+
+      const initials = (user.displayName || 'User')
         .split(' ')
+        .filter(Boolean)
         .map(n => n[0])
         .join('')
         .toUpperCase()
-        .slice(0, 2);
+        .slice(0, 2) || '👤';
+
+      const limitINR = ((user.dailySpendLimitCents || 500000) / 100).toFixed(2);
 
       document.getElementById('navAvatar').textContent = initials;
-      document.getElementById('navUserName').innerHTML = user.displayName + ' <span style="font-size:10px;">▼</span>';
+      document.getElementById('navUserName').innerHTML = (user.displayName || 'User') + ' <span style="font-size:10px;">▼</span>';
       document.getElementById('navUserLoc').textContent = '📍 ' + (user.defaultPincode || 'India');
 
-      document.getElementById('bannerUserName').textContent = user.displayName;
-      document.getElementById('bannerUserAddress').textContent = user.defaultAddress + ' (' + user.defaultPincode + ')';
-      document.getElementById('bannerUserLimit').textContent = '₹' + ((user.dailySpendLimitCents || 500000) / 100).toFixed(2) + ' / day';
+      const bannerContent = document.getElementById('bannerContent');
+      if (bannerContent) {
+        bannerContent.innerHTML =
+          '<span>👤 Ordering for: <b id="bannerUserName">' + (user.displayName || 'User') + '</b></span>' +
+          '<span>•</span>' +
+          '<span style="cursor: pointer;" onclick="openAddressModal()" title="Click to edit delivery address">📍 Delivery: <b id="bannerUserAddress">' + (user.defaultAddress || '') + ' (' + (user.defaultPincode || '') + ')</b> <span style="font-size:11px; color:#38bdf8;">✏️</span></span>' +
+          '<span>•</span>' +
+          '<span style="cursor: pointer;" onclick="openWalletModal()" title="Click to edit daily budget">🛡️ Limit: <b id="bannerUserLimit">₹' + limitINR + ' / day</b> <span style="font-size:11px; color:#10b981;">✏️ Edit</span></span>';
+      }
+
+      const bannerButtons = document.getElementById('bannerButtons');
+      if (bannerButtons) {
+        bannerButtons.innerHTML =
+          '<button class="btn-auth-switch" style="border-color:#10b981; color:#34d399;" onclick="openWalletModal()">💳 Wallet Budget</button>' +
+          '<button class="btn-auth-switch" onclick="openAddressModal()">📍 Change Location</button>' +
+          '<button class="btn-auth-switch" onclick="openAccountModal()">👤 Account</button>';
+      }
+
+      // Update wallet modal indicators if present
+      const wLimit = document.getElementById('walletModalLimit');
+      if (wLimit) wLimit.textContent = '₹' + limitINR;
+      const wRemaining = document.getElementById('walletModalRemaining');
+      if (wRemaining) wRemaining.textContent = '₹' + limitINR;
+      const wInput = document.getElementById('walletLimitInput');
+      if (wInput) wInput.value = Math.round((user.dailySpendLimitCents || 500000) / 100);
+
+      // Update address modal inputs if present
+      const addrInput = document.getElementById('addressStreetInput');
+      if (addrInput) addrInput.value = user.defaultAddress || '';
+      const pinInput = document.getElementById('addressPincodeInput');
+      if (pinInput) pinInput.value = user.defaultPincode || '';
+
+      // Update account tab in modal
+      const tabAcc = document.getElementById('tabAccountBtn');
+      if (tabAcc) tabAcc.style.display = 'block';
+
+      const accName = document.getElementById('accountDisplayName');
+      if (accName) accName.textContent = user.displayName;
+      const accEmail = document.getElementById('accountEmail');
+      if (accEmail) accEmail.textContent = user.email || (user.phone ? 'Phone: ' + user.phone : '');
+      const accAddr = document.getElementById('accountAddress');
+      if (accAddr) accAddr.textContent = (user.defaultAddress || '') + ' (' + (user.defaultPincode || '') + ')';
+      const accLimit = document.getElementById('accountLimit');
+      if (accLimit) accLimit.textContent = '₹' + limitINR + ' / day';
+      const accClerk = document.getElementById('accountClerkId');
+      if (accClerk) accClerk.textContent = 'Clerk ID: ' + (user.clerkUserId || user.id);
+      const accAv = document.getElementById('accountAvatar');
+      if (accAv) accAv.textContent = initials;
     }
 
-    function openAuthModal() {
+    async function logout() {
+      localStorage.removeItem('aca_active_user_id');
+      try {
+        await fetch('/api/auth/logout', { method: 'POST' });
+      } catch (e) {}
+      setGuestUI();
+      closeAuthModal();
+      appendAgentMessage('👋 You have been logged out. Please sign in or register with Clerk to start ordering.');
+    }
+
+    // Wallet & Budget Management Functions
+    function openWalletModal() {
+      if (!activeUser) {
+        openAuthModal('signup');
+        return;
+      }
+      const limitINR = ((activeUser.dailySpendLimitCents || 500000) / 100).toFixed(2);
+      document.getElementById('walletModalLimit').textContent = '₹' + limitINR;
+      document.getElementById('walletModalRemaining').textContent = '₹' + limitINR;
+      document.getElementById('walletLimitInput').value = Math.round((activeUser.dailySpendLimitCents || 500000) / 100);
+      document.getElementById('walletModal').style.display = 'flex';
+    }
+    function closeWalletModal() {
+      document.getElementById('walletModal').style.display = 'none';
+    }
+    function setBudgetPreset(val) {
+      document.getElementById('walletLimitInput').value = val;
+    }
+    async function submitWalletUpdate() {
+      const input = document.getElementById('walletLimitInput');
+      const val = parseFloat(input.value);
+      if (!val || isNaN(val) || val < 100 || val > 500000) {
+        alert('Please enter a valid daily budget between ₹100 and ₹5,00,000.');
+        return;
+      }
+      try {
+        const res = await fetch('/api/me/wallet', {
+          method: 'PATCH',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({
+            dailySpendLimitINR: val,
+            userId: activeUser ? activeUser.id : undefined,
+          })
+        });
+        const data = await res.json();
+        if (data.success && data.user) {
+          setUserUI(data.user);
+          closeWalletModal();
+          appendAgentMessage('🛡️ **Wallet Daily Spend Limit Updated:** Set to **₹' + parseFloat(data.dailyLimitINR).toFixed(2) + ' / day**. Saved to Neon database and enforced by agent guardrails.');
+        } else {
+          alert(data.error || 'Failed to update wallet limit');
+        }
+      } catch (err) {
+        alert('Wallet update request failed: ' + err.message);
+      }
+    }
+
+    // Dynamic Delivery Location Functions
+    function openAddressModal() {
+      if (!activeUser) {
+        openSignupModal();
+        return;
+      }
+      document.getElementById('addressStreetInput').value = activeUser.defaultAddress || '';
+      document.getElementById('addressPincodeInput').value = activeUser.defaultPincode || '';
+      document.getElementById('addressModal').style.display = 'flex';
+    }
+    function closeAddressModal() {
+      document.getElementById('addressModal').style.display = 'none';
+    }
+    function presetAddress(addr, pin, lat, lng) {
+      document.getElementById('addressStreetInput').value = addr;
+      document.getElementById('addressPincodeInput').value = pin;
+      if (lat && lng) {
+        document.getElementById('addressStreetInput').dataset.lat = lat;
+        document.getElementById('addressStreetInput').dataset.lng = lng;
+      }
+    }
+    async function submitAddressUpdate() {
+      const address = document.getElementById('addressStreetInput').value.trim();
+      const pincode = document.getElementById('addressPincodeInput').value.trim();
+      const lat = document.getElementById('addressStreetInput').dataset.lat;
+      const lng = document.getElementById('addressStreetInput').dataset.lng;
+
+      if (!address || !pincode) {
+        alert('Please provide both delivery address and pincode.');
+        return;
+      }
+      try {
+        const res = await fetch('/api/me/address', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ address, pincode, latitude: lat, longitude: lng })
+        });
+        const data = await res.json();
+        if (data.success && data.user) {
+          setUserUI(data.user);
+          closeAddressModal();
+          appendAgentMessage('📍 **Delivery Location Updated:** Set to **' + data.user.defaultAddress + ' (' + data.user.defaultPincode + ')**. Dark-store searches will now route here.');
+        } else {
+          alert(data.error || 'Failed to update delivery address');
+        }
+      } catch (err) {
+        alert('Address update request failed: ' + err.message);
+      }
+    }
+
+    function openAuthModal(tab) {
+      if (tab) {
+        switchAuthTab(tab);
+      } else if (activeUser) {
+        switchAuthTab('account');
+      } else {
+        switchAuthTab('login');
+      }
       document.getElementById('authModal').style.display = 'flex';
     }
     function closeAuthModal() {
@@ -1592,23 +2101,33 @@ function renderWebDashboard(): string {
     }
 
     function switchAuthTab(tab) {
-      if (tab === 'login') {
-        document.getElementById('loginTab').style.display = 'block';
-        document.getElementById('signupTab').style.display = 'none';
-        document.getElementById('tabLoginBtn').classList.add('active');
-        document.getElementById('tabSignupBtn').classList.remove('active');
-      } else {
-        document.getElementById('loginTab').style.display = 'none';
-        document.getElementById('signupTab').style.display = 'block';
-        document.getElementById('tabSignupBtn').classList.add('active');
-        document.getElementById('tabLoginBtn').classList.remove('active');
-      }
-    }
+      const loginTab = document.getElementById('loginTab');
+      const signupTab = document.getElementById('signupTab');
+      const accountTab = document.getElementById('accountTab');
+      const tabLoginBtn = document.getElementById('tabLoginBtn');
+      const tabSignupBtn = document.getElementById('tabSignupBtn');
+      const tabAccountBtn = document.getElementById('tabAccountBtn');
 
-    async function quickLogin(email, password) {
-      document.getElementById('loginEmail').value = email;
-      document.getElementById('loginPassword').value = password;
-      await submitLogin();
+      tabLoginBtn.classList.remove('active');
+      tabSignupBtn.classList.remove('active');
+      if (tabAccountBtn) tabAccountBtn.classList.remove('active');
+
+      if (tab === 'signup') {
+        loginTab.style.display = 'none';
+        signupTab.style.display = 'block';
+        if (accountTab) accountTab.style.display = 'none';
+        tabSignupBtn.classList.add('active');
+      } else if (tab === 'account') {
+        loginTab.style.display = 'none';
+        signupTab.style.display = 'none';
+        if (accountTab) accountTab.style.display = 'block';
+        if (tabAccountBtn) tabAccountBtn.classList.add('active');
+      } else {
+        loginTab.style.display = 'block';
+        signupTab.style.display = 'none';
+        if (accountTab) accountTab.style.display = 'none';
+        tabLoginBtn.classList.add('active');
+      }
     }
 
     async function submitLogin() {
@@ -1618,6 +2137,13 @@ function renderWebDashboard(): string {
         alert('Please enter your email or phone number');
         return;
       }
+
+      const loginBtn = document.getElementById('loginSubmitBtn');
+      if (loginBtn) {
+        loginBtn.disabled = true;
+        loginBtn.textContent = 'Authenticating with Clerk...';
+      }
+
       try {
         const res = await fetch('/api/auth/login', {
           method: 'POST',
@@ -1628,12 +2154,17 @@ function renderWebDashboard(): string {
         if (data.success && data.user) {
           setUserUI(data.user);
           closeAuthModal();
-          appendAgentMessage('Switched active user to **' + data.user.displayName + '**. Any new orders will be delivered to **' + data.user.defaultAddress + ' (' + data.user.defaultPincode + ')**.');
+          appendAgentMessage('👋 Welcome back, **' + data.user.displayName + '**! Active session established via Clerk.\\n\\n🛡️ Daily Wallet Budget: **₹' + ((data.user.dailySpendLimitCents || 500000) / 100).toFixed(2) + ' / day**\\n📍 Delivery: **' + data.user.defaultAddress + ' (' + data.user.defaultPincode + ')**');
         } else {
-          alert(data.error || 'Login failed');
+          alert(data.error || 'Login failed. Please verify your credentials.');
         }
       } catch (e) {
         alert('Login request failed: ' + e.message);
+      } finally {
+        if (loginBtn) {
+          loginBtn.disabled = false;
+          loginBtn.textContent = 'Log In with Clerk';
+        }
       }
     }
 
@@ -1651,26 +2182,55 @@ function renderWebDashboard(): string {
         return;
       }
 
+      if (password && password.length < 8) {
+        alert('Password must be at least 8 characters long for Clerk security.');
+        return;
+      }
+
+      const signupBtn = document.getElementById('signupSubmitBtn');
+      if (signupBtn) {
+        signupBtn.disabled = true;
+        signupBtn.textContent = 'Registering with Clerk...';
+      }
+
       try {
         const res = await fetch('/api/auth/signup', {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({ displayName, email, phone, address, pincode, dailySpendLimitINR: limit, password })
+          body: JSON.stringify({
+            displayName,
+            email,
+            phone,
+            address,
+            pincode,
+            dailySpendLimitINR: limit ? parseFloat(limit) : 5000,
+            password
+          })
         });
         const data = await res.json();
         if (data.success && data.user) {
           setUserUI(data.user);
           closeAuthModal();
-          appendAgentMessage('Welcome **' + data.user.displayName + '**! Your account has been registered with delivery address **' + data.user.defaultAddress + ' (' + data.user.defaultPincode + ')**. Tell me what you would like to order!');
+          appendAgentMessage('🎉 **Welcome ' + data.user.displayName + '!** Your Clerk account has been created and your daily wallet budget is configured to **₹' + parseFloat(data.remainingSpendINR).toFixed(2) + ' / day**.\\n\\n📍 Delivery Location: **' + data.user.defaultAddress + ' (' + data.user.defaultPincode + ')**.\\n\\nTell me what you would like to order!');
         } else {
           alert(data.error || 'Registration failed');
         }
       } catch (e) {
         alert('Sign up request failed: ' + e.message);
+      } finally {
+        if (signupBtn) {
+          signupBtn.disabled = false;
+          signupBtn.textContent = 'Sign Up with Clerk & Save Budget';
+        }
       }
     }
 
     function quickSend(text) {
+      if (!activeUser) {
+        openSignupModal();
+        appendAgentMessage('🔒 **Authentication Required:** You cannot order without signing up. Please create an account or log in with Clerk to set your wallet budget and place orders.');
+        return;
+      }
       document.getElementById('userInput').value = text;
       sendMessage();
     }
@@ -1679,6 +2239,12 @@ function renderWebDashboard(): string {
       const input = document.getElementById('userInput');
       const text = input.value.trim();
       if (!text) return;
+
+      if (!activeUser) {
+        openSignupModal();
+        appendAgentMessage('🔒 **Authentication Required:** You cannot order without signing up. Please create an account or log in with Clerk to configure your wallet budget and place orders.');
+        return;
+      }
 
       input.value = '';
       appendUserMessage(text);
@@ -1820,13 +2386,27 @@ function renderWebDashboard(): string {
         // Bottom Breakdown & Biometric Authorization
         html += '<div class="best-choice-footer">';
         html += '<div class="proposal-breakdown" style="margin-bottom:10px;">';
-        html += '<span>Delivering on behalf of: <b>' + escapeHtml(data.user.displayName) + '</b> (' + data.user.pincode + ')</span>';
+        const userDisplayName = activeUser ? activeUser.displayName : (data.user ? data.user.displayName : 'Guest (Sign Up Required)');
+        const userPin = activeUser ? (activeUser.defaultPincode || '') : (data.user ? data.user.pincode : '');
+        html += '<span>Delivering on behalf of: <b>' + escapeHtml(userDisplayName) + '</b>' + (userPin ? ' (' + escapeHtml(userPin) + ')' : '') + '</span>';
         html += '<span style="font-size:15px;">Total Payable: <b id="bestHeroTotal_' + data.sessionId + '" style="color:#10b981;">₹' + total + '</b></span>';
         html += '</div>';
 
-        html += '<button class="btn-passkey" id="passkeyBtn_' + data.sessionId + '" data-session="' + data.sessionId + '" data-mandate="' + data.mandateBundle.mandateId + '" data-challenge="' + data.mandateBundle.challenge.challengeId + '" data-amount="' + prop.totalAmountCents + '" onclick="triggerPasskeyFromBtn(this)">';
-        html += '🔒 Authorize ₹' + total + ' with Biometric Passkey (Touch ID / Face ID)';
-        html += '</button>';
+        if (activeUser && data.mandateBundle) {
+          const mandateId = data.mandateBundle.mandateId || '';
+          const challengeId = (data.mandateBundle.challenge && data.mandateBundle.challenge.challengeId) || '';
+          html += '<button class="btn-passkey" id="passkeyBtn_' + data.sessionId + '" data-session="' + data.sessionId + '" data-mandate="' + mandateId + '" data-challenge="' + challengeId + '" data-amount="' + prop.totalAmountCents + '" onclick="triggerPasskeyFromBtn(this)">';
+          html += '🔒 Authorize ₹' + total + ' with Biometric Passkey (Touch ID / Face ID)';
+          html += '</button>';
+        } else if (!activeUser) {
+          html += '<button class="btn-passkey" style="background: linear-gradient(135deg, #059669 0%, #10b981 100%);" id="passkeyBtn_' + data.sessionId + '" onclick="openSignupModal()">';
+          html += '⚡ Sign Up with Clerk to Authorize Order (₹' + total + ')';
+          html += '</button>';
+        } else {
+          html += '<button class="btn-passkey" style="background: rgba(239, 68, 68, 0.2); border: 1px solid rgba(239, 68, 68, 0.4); color: #f87171;" disabled>';
+          html += '⚠️ ' + escapeHtml((data.turn && data.turn.error) || data.error || 'Authorization mandate unavailable');
+          html += '</button>';
+        }
         html += '</div>'; // end best-choice-footer
 
         html += '</div>'; // end best-choice-card
@@ -1895,6 +2475,11 @@ function renderWebDashboard(): string {
     }
 
     function handleSelectAlternative(btn) {
+      if (!activeUser) {
+        openSignupModal();
+        appendAgentMessage('🔒 **Authentication Required:** You cannot select items or place orders without signing up. Please create an account or log in with Clerk to set your wallet budget and place orders.');
+        return;
+      }
       const sessionId = btn.getAttribute('data-session');
       const idx = parseInt(btn.getAttribute('data-index'), 10);
       if (!currentTurnData) return;
@@ -1949,14 +2534,28 @@ function renderWebDashboard(): string {
     }
 
     function triggerPasskeyFromBtn(btn) {
+      if (!activeUser) {
+        openSignupModal();
+        appendAgentMessage('🔒 **Authentication Required:** You cannot place or authorize orders without signing up. Please create an account or log in with Clerk to set your wallet budget and place orders.');
+        return;
+      }
       const sessionId = btn.getAttribute('data-session');
       const mandateId = btn.getAttribute('data-mandate');
       const challengeId = btn.getAttribute('data-challenge');
       const totalCents = parseInt(btn.getAttribute('data-amount') || '0', 10);
+      if (!mandateId) {
+        alert('Authorization mandate unavailable. Please request a fresh quote.');
+        return;
+      }
       triggerPasskeyCheckout(sessionId, mandateId, challengeId, totalCents);
     }
 
     async function triggerPasskeyCheckout(sessionId, mandateId, challengeId, totalCents) {
+      if (!activeUser) {
+        openSignupModal();
+        appendAgentMessage('🔒 **Authentication Required:** You cannot place or authorize orders without signing up. Please create an account or log in with Clerk to set your wallet budget and place orders.');
+        return;
+      }
       const dialog = document.getElementById('biometricDialog');
       const desc = document.getElementById('biometricDesc');
       const chalEl = document.getElementById('biometricChallengeId');
@@ -1974,6 +2573,7 @@ function renderWebDashboard(): string {
               sessionId,
               mandateId,
               challengeId,
+              userId: activeUser ? activeUser.id : undefined,
               signature: 'prava_fido2_biometric_verified_sig_' + Date.now()
             })
           });
@@ -1985,6 +2585,9 @@ function renderWebDashboard(): string {
             renderOrderReceipt(checkoutData);
           } else {
             alert('Checkout failed: ' + (checkoutData.error || 'Unknown error'));
+            if (checkoutData.requiresAuth || checkoutData.requiresSignup) {
+              openSignupModal();
+            }
           }
         } catch (e) {
           dialog.style.display = 'none';
@@ -2059,14 +2662,25 @@ function renderWebDashboard(): string {
 
 // Start Server
 export function startDevServer(port = PORT): http.Server {
-  authProvider.seedUser({ ...SUSHMITA_USER });
-  authProvider.setActiveUser(SUSHMITA_USER.id);
+  authProvider.seedVerifiedClerkProfiles();
+  authProvider.syncWithClerkAndDb().catch((err) => {
+    console.warn('Initial Clerk/Neon sync note:', err.message);
+  });
 
   const server = http.createServer((req, res) => {
     handleRequest(req, res).catch((err) => {
       res.writeHead(500, { 'Content-Type': 'text/html' });
       res.end(`Internal Server Error: ${String(err)}`);
     });
+  });
+
+  server.on('error', (err: any) => {
+    if (err.code === 'EADDRINUSE') {
+      console.error(`\n❌ Error: Port ${port} is already in use by another process.`);
+      console.error(`👉 Tip: Stop the other process or set PORT in .env.local (e.g. PORT=3001).\n`);
+    } else {
+      console.error('Server error:', err);
+    }
   });
 
   server.listen(port, () => {
@@ -2079,7 +2693,7 @@ export function startDevServer(port = PORT): http.Server {
 ⚡ Zepto MCP:         https://mcp.zepto.co.in/mcp (10-minute Quick Delivery)
 🔒 Prava Payments:    https://sandbox.api.prava.space (AP2 Passkeys)
 🛡️ Spend Controls:    Per-user dynamic limit with FIDO2 gate
-👤 Active User:       Sushmita Mishra (Dombivli West 421202)
+👤 Clerk Auth:        Enabled (Live Identity + Neon PostgreSQL)
 ========================================================================
 `);
   });

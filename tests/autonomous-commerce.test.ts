@@ -91,6 +91,24 @@ describe('Autonomous Commerce Agent with Swiggy & Zepto MCP', () => {
       expect(['swiggy_instamart', 'zepto']).toContain(comparison.recommendedProposal.platform);
       expect(comparison.recommendationReason).toBeTruthy();
     });
+
+    it('accurately resolves specific brand and volume items (1L Nandini milk & brown bread) across platforms', async () => {
+      const session = await autonomousCommerceRunner.initializeSession(mockUserId);
+      const turn = await autonomousCommerceRunner.processShoppingTurn(
+        session.sessionId,
+        'Find me 1L Nandini milk and brown bread in under 15 mins'
+      );
+
+      expect(turn.proposal).toBeDefined();
+      expect(turn.proposal.items.length).toBe(2);
+      expect(turn.proposal.resolvedItemsContext).toBeDefined();
+      expect(turn.proposal.resolvedItemsContext!.length).toBe(2);
+      
+      const itemNames = turn.proposal.resolvedItemsContext!.map((it) => it.name.toLowerCase());
+      expect(itemNames.some((n) => n.includes('nandini') && n.includes('milk'))).toBe(true);
+      expect(itemNames.some((n) => n.includes('bread'))).toBe(true);
+      expect(turn.mandateBundle).toBeDefined();
+    });
   });
 
   describe('3. Spending Limits & Pre-Purchase Validation', () => {
