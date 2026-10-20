@@ -22,6 +22,15 @@ export interface SpendValidationResult {
   reason?: string;
 }
 
+export interface ActiveSpendReservation {
+  reservationId: string;
+  userId: string;
+  mandateId: string;
+  amountCents: number;
+  createdAt: Date;
+  expiresAt: Date;
+}
+
 export class SpendTracker {
   // In-memory completed transactions store for testing and fallback
   private mockCompletedTransactions: Array<{
@@ -30,11 +39,88 @@ export class SpendTracker {
     completedAt: Date;
   }> = [];
 
+  // Active in-flight spend reservations to prevent concurrent checkout overspend
+  private activeReservations: Map<string, ActiveSpendReservation> = new Map();
+
   /**
    * Record a completed transaction in memory (for tests/fallback)
    */
   public recordCompletedTransaction(userId: string, amountCents: number, completedAt: Date = new Date()): void {
     this.mockCompletedTransactions.push({ userId, amountCents, completedAt });
+  }
+
+  /**
+   * Get active (unexpired) reservations total for a user
+   */
+  public getActiveReservationsTotal(userId: string, now: Date = new Date()): number {
+    let total = 0;
+    for (const [key, res] of this.activeReservations.entries()) {
+      if (res.expiresAt <= now) {
+        this.activeReservations.delete(key);
+      } else if (res.userId === userId) {
+        total += res.amountCents;
+      }
+    }
+    return total;
+  }
+
+  /**
+   * Atomically reserve spend budget for a pending checkout
+   */
+  public reserveSpend(
+    userId: string,
+    amountCents: number,
+    mandateId: string,
+    dailySpendLimitCents: number = 500000
+  ): SpendValidationResult & { reservationId?: string } {
+    const now = new Date();
+    const rollingSpent = this.calculateRolling24hSpend(userId, now);
+    const activeReserved = this.getActiveReservationsTotal(userId, now);
+    const totalCommitted = rollingSpent + activeReserved;
+    const remaining = Math.max(0, dailySpendLimitCents - totalCommitted);
+
+    if (amountCents > remaining) {
+      const attemptedInr = (amountCents / 100).toFixed(2);
+      const remainingInr = (remaining / 100).toFixed(2);
+      return {
+        allowed: false,
+        attemptedCents: amountCents,
+        remainingDailyCents: remaining,
+        reason: `Purchase amount of ₹${attemptedInr} exceeds your remaining daily spend allowance of ₹${remainingInr} (including active reservations).`,
+      };
+    }
+
+    const reservationId = `res_${Date.now()}_${Math.random().toString(36).substring(2, 7)}`;
+    this.activeReservations.set(mandateId, {
+      reservationId,
+      userId,
+      mandateId,
+      amountCents,
+      createdAt: now,
+      expiresAt: new Date(now.getTime() + 10 * 60 * 1000), // 10 minute window matching AP2 mandate TTL
+    });
+
+    return {
+      allowed: true,
+      attemptedCents: amountCents,
+      remainingDailyCents: remaining - amountCents,
+      reservationId,
+    };
+  }
+
+  /**
+   * Commit reservation to permanent spend on checkout success
+   */
+  public commitReservation(mandateId: string, userId: string, amountCents: number): void {
+    this.activeReservations.delete(mandateId);
+    this.recordCompletedTransaction(userId, amountCents);
+  }
+
+  /**
+   * Release reservation on definitive checkout failure
+   */
+  public releaseReservation(mandateId: string): void {
+    this.activeReservations.delete(mandateId);
   }
 
   /**
@@ -83,19 +169,21 @@ export class SpendTracker {
   }
 
   /**
-   * Get user spend profile
+   * Get user spend profile (includes committed spend + active reservations)
    */
   public getUserSpendProfile(
     userId: string,
     dailySpendLimitCents: number = 500000 // default ₹5,000.00
   ): UserSpendProfile {
     const rolling24hSpentCents = this.calculateRolling24hSpend(userId);
-    const remainingDailySpendCents = Math.max(0, dailySpendLimitCents - rolling24hSpentCents);
+    const activeReserved = this.getActiveReservationsTotal(userId);
+    const totalCommitted = rolling24hSpentCents + activeReserved;
+    const remainingDailySpendCents = Math.max(0, dailySpendLimitCents - totalCommitted);
 
     return {
       userId,
       dailySpendLimitCents,
-      rolling24hSpentCents,
+      rolling24hSpentCents: totalCommitted,
       remainingDailySpendCents,
       currency: 'INR',
     };
@@ -110,12 +198,14 @@ export class SpendTracker {
     dbOverride?: any
   ): Promise<UserSpendProfile> {
     const rolling24hSpentCents = await this.calculateRolling24hSpendFromDb(userId, dbOverride);
-    const remainingDailySpendCents = Math.max(0, dailySpendLimitCents - rolling24hSpentCents);
+    const activeReserved = this.getActiveReservationsTotal(userId);
+    const totalCommitted = rolling24hSpentCents + activeReserved;
+    const remainingDailySpendCents = Math.max(0, dailySpendLimitCents - totalCommitted);
 
     return {
       userId,
       dailySpendLimitCents,
-      rolling24hSpentCents,
+      rolling24hSpentCents: totalCommitted,
       remainingDailySpendCents,
       currency: 'INR',
     };
@@ -180,6 +270,7 @@ export class SpendTracker {
 
   public clear(): void {
     this.mockCompletedTransactions = [];
+    this.activeReservations.clear();
   }
 }
 

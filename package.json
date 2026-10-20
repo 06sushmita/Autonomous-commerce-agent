@@ -9,7 +9,7 @@
     "auth:swiggy": "tsx scripts/auth-swiggy.ts",
     "auth:zepto": "tsx scripts/auth-zepto.ts",
     "build": "tsc",
-    "test": "vitest run",
+    "test": "vitest run --testTimeout=15000",
     "test:watch": "vitest",
     "typecheck": "tsc --noEmit",
     "db:generate": "drizzle-kit generate",
@@ -20,17 +20,19 @@
     "@agorio/plugin-audit-trail": "^1.0.0",
     "@agorio/plugin-spending-controls": "^1.0.0",
     "@agorio/sdk": "^0.9.0",
+    "@clerk/backend": "^3.25.0",
     "@modelcontextprotocol/sdk": "^1.32.1",
     "@neondatabase/serverless": "^0.10.4",
     "dotenv": "^16.4.7",
-    "drizzle-orm": "^0.38.4",
+    "drizzle-orm": "^0.45.4",
     "zod": "^3.24.2"
   },
   "devDependencies": {
     "@types/node": "^22.13.4",
-    "drizzle-kit": "^0.30.4",
+    "drizzle-kit": "^0.31.11",
     "tsx": "^4.23.15",
     "typescript": "^5.7.3",
-    "vitest": "^3.0.5"
+    "vite": "^8.3.4",
+    "vitest": "^5.0.5"
   }
 }

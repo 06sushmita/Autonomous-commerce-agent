@@ -92,6 +92,7 @@ export interface QuickCommerceBasketProposal {
   unavailableItems?: string[];
   cartId: string;
   bestItem?: QuickCommerceItem;
+  resolvedItemsContext?: QuickCommerceItem[];
   itemTotalCents?: number;
   surgeFeeCents?: number;
   taxesCents?: number;

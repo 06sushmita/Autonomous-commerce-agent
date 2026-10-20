@@ -124,6 +124,7 @@ export const transactions = pgTable('transactions', {
   userId: uuid('user_id').notNull().references(() => users.id),
   sessionId: uuid('session_id').notNull().references(() => agentSessions.id),
   mandateId: uuid('mandate_id').notNull().references(() => mandates.id), // Guaranteed unique per transaction
+  idempotencyKey: text('idempotency_key').unique(),
   pravaTokenRef: text('prava_token_ref').notNull(),
   merchantId: text('merchant_id').notNull(),
   merchantOrderId: text('merchant_order_id'),
@@ -136,6 +137,7 @@ export const transactions = pgTable('transactions', {
   updatedAt: timestamp('updated_at', { withTimezone: true }).notNull().defaultNow(),
 }, (table) => [
   uniqueIndex('idx_transactions_mandate_unique').on(table.mandateId),
+  uniqueIndex('idx_transactions_idempotency_key').on(table.idempotencyKey),
   index('idx_transactions_user_created').on(table.userId, table.createdAt),
 ]);
 

@@ -186,46 +186,96 @@ export class QuickCommerceMcpManager {
   }
 
   /**
-   * Assemble and compare carts across Swiggy and Zepto to find the lowest price and fastest ETA,
-   * or directly build basket for an explicitly chosen merchant.
+   * Assemble and compare carts across Swiggy and Zepto with high accuracy.
+   * Leverages parallel resolution, semantic filtering, and complete aggregate data context.
    */
   public async compareAndAssembleBasket(
     items: Array<{ name: string; quantity: number }>,
     location: DeliveryLocation,
     explicitMerchant?: 'swiggy' | 'zepto'
   ): Promise<MultiPlatformComparison> {
-    // 1. Resolve items on Swiggy (if not explicitly Zepto)
+    
+    // Helper to find the absolute best item matching the user target name using a simple string score
+    const selectBestMatchedItem = (results: QuickCommerceItem[], targetName: string): QuickCommerceItem | undefined => {
+      if (!results || results.length === 0) return undefined;
+      
+      const cleanTarget = targetName.toLowerCase();
+      let bestItem = results[0];
+      let highestScore = 0;
+
+      for (const item of results) {
+        const cleanItemName = item.name.toLowerCase();
+        let currentScore = 0;
+
+        // Weight exact brand/substring matches
+        if (cleanItemName.includes(cleanTarget)) currentScore += 10;
+        
+        // Match specific volume tokens like "1l", "500ml", "brown"
+        const tokens = cleanTarget.split(/\s+/);
+        tokens.forEach(token => {
+          if (cleanItemName.includes(token)) currentScore += 2;
+        });
+
+        if (currentScore > highestScore) {
+          highestScore = currentScore;
+          bestItem = item;
+        }
+      }
+      return bestItem;
+    };
+
+    // 1. Resolve items on Swiggy in Parallel (if not explicitly Zepto)
     const swiggyCartItems: Array<{ itemId: string; quantity: number }> = [];
-    let topSwiggyItem: QuickCommerceItem | undefined;
+    const swiggyResolvedItems: QuickCommerceItem[] = [];
+
     if (explicitMerchant !== 'zepto') {
-      for (const item of items) {
+      const swiggyPromises = items.map(async (item) => {
         try {
           const results = await this.swiggy.searchItems(item.name, location);
-          if (results.length > 0) {
-            swiggyCartItems.push({ itemId: results[0].id, quantity: item.quantity });
-            if (!topSwiggyItem) topSwiggyItem = results[0];
+          const bestMatch = selectBestMatchedItem(results, item.name);
+          if (bestMatch) {
+            return { itemId: bestMatch.id, quantity: item.quantity, rawItem: bestMatch };
           }
-        } catch {
-          // Ignore merchant error if fallback or other merchant available
+        } catch (err) {
+          // Fail silently per item to allow graceful fallback paths
         }
-      }
+        return null;
+      });
+
+      const swiggyResults = await Promise.all(swiggyPromises);
+      swiggyResults.forEach((res) => {
+        if (res) {
+          swiggyCartItems.push({ itemId: res.itemId, quantity: res.quantity });
+          swiggyResolvedItems.push(res.rawItem);
+        }
+      });
     }
 
-    // 2. Resolve items on Zepto (if not explicitly Swiggy)
+    // 2. Resolve items on Zepto in Parallel (if not explicitly Swiggy)
     const zeptoCartItems: Array<{ itemId: string; quantity: number }> = [];
-    let topZeptoItem: QuickCommerceItem | undefined;
+    const zeptoResolvedItems: QuickCommerceItem[] = [];
+
     if (explicitMerchant !== 'swiggy') {
-      for (const item of items) {
+      const zeptoPromises = items.map(async (item) => {
         try {
           const results = await this.zepto.searchProducts(item.name, location);
-          if (results.length > 0) {
-            zeptoCartItems.push({ itemId: results[0].id, quantity: item.quantity });
-            if (!topZeptoItem) topZeptoItem = results[0];
+          const bestMatch = selectBestMatchedItem(results, item.name);
+          if (bestMatch) {
+            return { itemId: bestMatch.id, quantity: item.quantity, rawItem: bestMatch };
           }
-        } catch {
-          // Ignore merchant error if fallback or other merchant available
+        } catch (err) {
+          // Fail silently per item to allow graceful fallback paths
         }
-      }
+        return null;
+      });
+
+      const zeptoResults = await Promise.all(zeptoPromises);
+      zeptoResults.forEach((res) => {
+        if (res) {
+          zeptoCartItems.push({ itemId: res.itemId, quantity: res.quantity });
+          zeptoResolvedItems.push(res.rawItem);
+        }
+      });
     }
 
     // 3. Create proposals in parallel
@@ -238,15 +288,18 @@ export class QuickCommerceMcpManager {
         : undefined,
     ]);
 
-    if (swiggyProposal && topSwiggyItem) {
-      swiggyProposal.bestItem = topSwiggyItem;
+    // FIX: Attach ALL resolved items to the final proposal for spotlight evaluation, not just the first loop hit
+    if (swiggyProposal && swiggyResolvedItems.length > 0) {
+      swiggyProposal.resolvedItemsContext = swiggyResolvedItems; 
+      swiggyProposal.bestItem = swiggyResolvedItems[0]; // Retain for typing backwards compatibility
     }
-    if (zeptoProposal && topZeptoItem) {
-      zeptoProposal.bestItem = topZeptoItem;
+    if (zeptoProposal && zeptoResolvedItems.length > 0) {
+      zeptoProposal.resolvedItemsContext = zeptoResolvedItems;
+      zeptoProposal.bestItem = zeptoResolvedItems[0]; 
     }
 
     if (!swiggyProposal && !zeptoProposal) {
-      throw new Error(`Items could not be found across dark stores for location ${location.pincode}`);
+      throw new Error(`Items could not be completely fulfilled across dark stores for location ${location.pincode}`);
     }
 
     // 4. Decision boundary: user preference or rank by availability, price, and ETA
@@ -276,7 +329,7 @@ export class QuickCommerceMcpManager {
     }
 
     if (!recommended.bestItem) {
-      recommended.bestItem = recommended.platform === 'zepto' ? topZeptoItem : topSwiggyItem;
+      recommended.bestItem = recommended.platform === 'zepto' ? zeptoResolvedItems[0] : swiggyResolvedItems[0];
     }
 
     return {
