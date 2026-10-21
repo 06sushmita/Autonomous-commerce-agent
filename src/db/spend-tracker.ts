@@ -306,10 +306,13 @@ export class SpendTracker {
     const period = options?.period || this.mode;
 
     const bounds = this.getLocalDayBounds(now, tz);
-    const spentCents =
-      period === 'local_day'
-        ? this.calculateLocalDaySpend(userId, now, tz)
-        : this.calculateRolling24hSpend(userId, now);
+    const rollingSpent = this.calculateRolling24hSpend(userId, now);
+    const localDaySpent = this.calculateLocalDaySpend(userId, now, tz);
+    const spentCents = options?.period === 'local_day'
+      ? localDaySpent
+      : options?.period === 'rolling_24h'
+      ? rollingSpent
+      : Math.max(rollingSpent, localDaySpent);
 
     const activeReserved = this.getActiveReservationsTotal(userId, now);
     const totalCommitted = spentCents + activeReserved;
@@ -339,13 +342,17 @@ export class SpendTracker {
   ): Promise<UserSpendProfile> {
     const now = options?.now || new Date();
     const tz = options?.timeZone || this.defaultTimeZone;
-    const period = options?.period || this.mode;
 
     const bounds = this.getLocalDayBounds(now, tz);
-    const spentCents =
-      period === 'local_day'
-        ? await this.calculateLocalDaySpendFromDb(userId, now, tz, dbOverride)
-        : await this.calculateRolling24hSpendFromDb(userId, dbOverride, now);
+    const [localDaySpent, rollingSpent] = await Promise.all([
+      this.calculateLocalDaySpendFromDb(userId, now, tz, dbOverride),
+      this.calculateRolling24hSpendFromDb(userId, dbOverride, now),
+    ]);
+    const spentCents = options?.period === 'local_day'
+      ? localDaySpent
+      : options?.period === 'rolling_24h'
+      ? rollingSpent
+      : Math.max(rollingSpent, localDaySpent);
 
     const activeReserved = await this.getActiveReservationsTotalFromDb(userId, dbOverride, now);
     const totalCommitted = spentCents + activeReserved;

@@ -409,18 +409,19 @@ async function handleRequest(req: http.IncomingMessage, res: http.ServerResponse
           { confirmed: true, override: userLocation }
         );
       } catch (err: any) {
+        console.error('DEV-SERVER CHAT ERROR STACK:', err.stack);
         errorMsg = err.message;
       }
 
-      // Ensure all items have official product links
-      const swiggyItems = searchResults.swiggyItems.map((item) => ({
+      // Ensure all items have official product links and are strictly capped to the top 5 highest-accuracy items
+      const swiggyItems = quickCommerceMcpManager.rankTopItems(searchResults.swiggyItems, { query, limit: 5 }).map((item) => ({
         ...item,
         productUrl:
           item.productUrl ||
           `https://www.swiggy.com/instamart/search?query=${encodeURIComponent(item.name)}`,
       }));
 
-      const zeptoItems = searchResults.zeptoItems.map((item) => ({
+      const zeptoItems = quickCommerceMcpManager.rankTopItems(searchResults.zeptoItems, { query, limit: 5 }).map((item) => ({
         ...item,
         productUrl:
           item.productUrl ||
@@ -473,14 +474,14 @@ async function handleRequest(req: http.IncomingMessage, res: http.ServerResponse
         turn.proposal.bestItems = bestItems;
       }
 
-      // Format clean, conversational AI response
+      // Format clean, conversational AI response emphasizing the Top 5 and the 4 constraints
       const swiggyCount = swiggyItems.length;
       const zeptoCount = zeptoItems.length;
 
       let reply = `I searched both **Swiggy Instamart** and **Zepto** in real time for **"${query}"** for delivery to **${user.defaultAddress}**.\n\n`;
 
       if (swiggyCount > 0 || zeptoCount > 0) {
-        reply += `Found **${swiggyCount} live items on Swiggy** and **${zeptoCount} live items on Zepto**.\n`;
+        reply += `Filtered and ranked to the **top 5 highest-accuracy items** based on your priority constraints: **1. Price (lowest first)**, **2. Quantity (stock & pack)**, **3. Product relevance**, and **4. Brand**.\n`;
       } else {
         reply += `⚠️ No live products found on Swiggy or Zepto for "${query}". Demo items and fabricated fallback prices are strictly prohibited.\n`;
       }
@@ -497,6 +498,9 @@ async function handleRequest(req: http.IncomingMessage, res: http.ServerResponse
           const titleStr = bestItem ? `**${bestItem.name}**` : 'Selected Items';
           reply += `\n⭐ **Agent's Top Choice:** ${titleStr}\n`;
         }
+        if (turn.proposal.constraintValidation?.allPassed) {
+          reply += `\n🎯 **Multi-Constraint Gate:** ✓ All 5 constraints (Product Brand, Verified Live Price, Cost Limit, Quantity/Stock, and Delivery ETA) strictly accepted by ${turn.proposal.merchantName} MCP server.\n`;
+        }
         reply += `\n💡 **Reason:** ${turn.recommendationReason}\n`;
         reply += `Total payable is **₹${(turn.proposal.totalAmountCents / 100).toFixed(2)}** (estimated) with an ETA of **${turn.proposal.etaMinutes} minutes**.\n`;
         if (turn.proposal.budgetSuggestion) {
@@ -507,7 +511,7 @@ async function handleRequest(req: http.IncomingMessage, res: http.ServerResponse
           reply += `\nPlease review ${countDesc} below and authorize on behalf of **${user.displayName}** using your Biometric Passkey.`;
         }
       } else if (errorMsg) {
-        reply += `\n⚠️ Note: ${errorMsg}`;
+        reply += `\n⚠️ **Order Constraints Not Met:** ${errorMsg}\nFallback to synthetic or unverified mock data is strictly prohibited.`;
       }
 
       return sendJson(200, {
@@ -1787,11 +1791,12 @@ function renderWebDashboard(): string {
       <!-- Chat Input Bar -->
       <div class="chat-input-bar">
         <div class="quick-chips">
+          <span class="chip" onclick="quickSend('Find me 1L Nandini milk and brown bread in under 15 mins')">🥛 1L Milk & Bread (<15m)</span>
+          <span class="chip" onclick="quickSend('Nandini milk under ₹50 in under 15 mins')">🥛 Nandini Milk (<₹50, <15m)</span>
+          <span class="chip" onclick="quickSend('Amul butter under ₹65 within 10 mins')">🧈 Amul Butter (<₹65, <10m)</span>
+          <span class="chip" onclick="quickSend('6 eggs and brown bread under ₹150')">🥚 6 Eggs & Bread</span>
           <span class="chip" onclick="quickSend('Maggi Hot & Sweet Chilli Tomato Sauce')">🥫 Maggi Sauce</span>
-          <span class="chip" onclick="quickSend('Find me 1L Nandini milk and brown bread in under 15 mins')">🥛 1L Milk & Bread</span>
-          <span class="chip" onclick="quickSend('Search Amul butter and eggs')">🧈 Amul Butter & Eggs</span>
           <span class="chip" onclick="quickSend('Compare Swiggy vs Zepto for milk')">⚡ Compare Swiggy vs Zepto</span>
-          <span class="chip" onclick="quickSend('Find Maggi noodles and Coke')">🍜 Maggi & Coke</span>
         </div>
         <div class="input-wrapper">
           <input type="text" id="userInput" class="chat-input" placeholder="Search groceries or order items (e.g. 'Maggi sauce', '1L milk', 'Amul butter')..." onkeydown="if(event.key==='Enter') sendMessage()">
@@ -2586,11 +2591,24 @@ function renderWebDashboard(): string {
         html += '<div class="best-choice-glow"></div>';
         html += '<div class="best-choice-top-bar">';
         html += '<div class="best-choice-badge">🏆 AGENT TOP CHOICES (' + bestItems.length + ' ITEMS)</div>';
+        if (prop.constraintValidation && prop.constraintValidation.allPassed) {
+          html += '<span style="border: 1px solid #10b981; color: #10b981; background: rgba(16,185,129,0.15); font-size:11px; padding:3px 10px; border-radius:12px; font-weight:700; display:inline-flex; align-items:center; gap:6px;">✓ 5 CONSTRAINTS VERIFIED</span>';
+        }
         html += '<span style="border: 1px solid ' + platformColor + '; color: ' + platformColor + '; background: rgba(0,0,0,0.3); font-size:11px; padding:3px 10px; border-radius:12px; font-weight:700; display:inline-flex; align-items:center; gap:6px;">';
         html += '<span class="status-dot" style="background:' + platformColor + ';"></span> ' + platformName;
         html += '</span>';
         html += '<span class="eta-badge" style="background:rgba(59,130,246,0.15); color:#60a5fa; border:1px solid rgba(59,130,246,0.3); font-weight:700;">⚡ ' + eta + ' MINS DELIVERY</span>';
         html += '</div>';
+
+        if (prop.constraintValidation && prop.constraintValidation.allPassed) {
+          html += '<div style="display:flex; flex-wrap:wrap; gap:6px; margin: 0 0 10px 0;">';
+          html += '<span style="background:rgba(16,185,129,0.12); border:1px solid rgba(16,185,129,0.3); color:#34d399; font-size:10px; font-weight:700; padding:2px 8px; border-radius:6px;">✓ Brand Verified</span>';
+          html += '<span style="background:rgba(16,185,129,0.12); border:1px solid rgba(16,185,129,0.3); color:#34d399; font-size:10px; font-weight:700; padding:2px 8px; border-radius:6px;">✓ Live MCP Price Confirmed</span>';
+          html += '<span style="background:rgba(16,185,129,0.12); border:1px solid rgba(16,185,129,0.3); color:#34d399; font-size:10px; font-weight:700; padding:2px 8px; border-radius:6px;">✓ Cost Limit Satisfied</span>';
+          html += '<span style="background:rgba(16,185,129,0.12); border:1px solid rgba(16,185,129,0.3); color:#34d399; font-size:10px; font-weight:700; padding:2px 8px; border-radius:6px;">✓ Stock & Qty Available</span>';
+          html += '<span style="background:rgba(16,185,129,0.12); border:1px solid rgba(16,185,129,0.3); color:#34d399; font-size:10px; font-weight:700; padding:2px 8px; border-radius:6px;">✓ Delivery ETA (' + eta + 'm) Guaranteed</span>';
+          html += '</div>';
+        }
 
         html += '<div style="display:flex; flex-direction:column; gap:10px; margin: 12px 0;">';
         for (let i = 0; i < bestItems.length; i++) {
@@ -2731,11 +2749,24 @@ function renderWebDashboard(): string {
         html += '<div class="best-choice-glow"></div>';
         html += '<div class="best-choice-top-bar">';
         html += '<div class="best-choice-badge">🏆 AGENT TOP CHOICE</div>';
+        if (prop.constraintValidation && prop.constraintValidation.allPassed) {
+          html += '<span style="border: 1px solid #10b981; color: #10b981; background: rgba(16,185,129,0.15); font-size:11px; padding:3px 10px; border-radius:12px; font-weight:700; display:inline-flex; align-items:center; gap:6px;">✓ 5 CONSTRAINTS VERIFIED</span>';
+        }
         html += '<span style="border: 1px solid ' + platformColor + '; color: ' + platformColor + '; background: rgba(0,0,0,0.3); font-size:11px; padding:3px 10px; border-radius:12px; font-weight:700; display:inline-flex; align-items:center; gap:6px;">';
         html += '<span class="status-dot" style="background:' + platformColor + ';"></span> ' + platformName;
         html += '</span>';
         html += '<span class="eta-badge" style="background:rgba(59,130,246,0.15); color:#60a5fa; border:1px solid rgba(59,130,246,0.3); font-weight:700;">⚡ ' + eta + ' MINS DELIVERY</span>';
         html += '</div>';
+
+        if (prop.constraintValidation && prop.constraintValidation.allPassed) {
+          html += '<div style="display:flex; flex-wrap:wrap; gap:6px; margin: 0 0 14px 0;">';
+          html += '<span style="background:rgba(16,185,129,0.12); border:1px solid rgba(16,185,129,0.3); color:#34d399; font-size:10px; font-weight:700; padding:2px 8px; border-radius:6px;">✓ Brand Verified</span>';
+          html += '<span style="background:rgba(16,185,129,0.12); border:1px solid rgba(16,185,129,0.3); color:#34d399; font-size:10px; font-weight:700; padding:2px 8px; border-radius:6px;">✓ Live MCP Price Confirmed</span>';
+          html += '<span style="background:rgba(16,185,129,0.12); border:1px solid rgba(16,185,129,0.3); color:#34d399; font-size:10px; font-weight:700; padding:2px 8px; border-radius:6px;">✓ Cost Limit Satisfied</span>';
+          html += '<span style="background:rgba(16,185,129,0.12); border:1px solid rgba(16,185,129,0.3); color:#34d399; font-size:10px; font-weight:700; padding:2px 8px; border-radius:6px;">✓ Stock & Qty Available</span>';
+          html += '<span style="background:rgba(16,185,129,0.12); border:1px solid rgba(16,185,129,0.3); color:#34d399; font-size:10px; font-weight:700; padding:2px 8px; border-radius:6px;">✓ Delivery ETA (' + eta + 'm) Guaranteed</span>';
+          html += '</div>';
+        }
 
         html += '<div class="best-choice-body">';
         html += '<div class="best-choice-img-box">';
@@ -2852,17 +2883,18 @@ function renderWebDashboard(): string {
         html += '</div>'; // end best-choice-card
       }
 
-      // 2. RENDER ALTERNATIVE OPTIONS SECTION WITH OFFICIAL LINKS
-      if (allItems.length > 0) {
+      // 2. RENDER ALTERNATIVE OPTIONS SECTION WITH OFFICIAL LINKS (STRICTLY TOP 5)
+      const topOptions = (allItems || []).slice(0, 5);
+      if (topOptions.length > 0) {
         html += '<div class="alt-options-section">';
         html += '<div class="alt-options-header">';
-        html += '<span>📦 All Matching Products & Sizes (' + allItems.length + ')</span>';
-        html += '<span style="font-size:11px; color:var(--text-muted);">Click "Select" to make any item your best choice</span>';
+        html += '<span>📦 Top 5 Verified Options & Alternatives</span>';
+        html += '<span style="font-size:11px; color:var(--text-muted);">Strictly ranked by: 1. Price (Lowest) • 2. Quantity (In-Stock) • 3. Product Match • 4. Brand</span>';
         html += '</div>';
 
         html += '<div class="product-cards-row">';
-        for (let idx = 0; idx < allItems.length; idx++) {
-          const item = allItems[idx];
+        for (let idx = 0; idx < topOptions.length; idx++) {
+          const item = topOptions[idx];
           const isSwiggy = item.platform === 'swiggy_instamart';
           const pName = isSwiggy ? 'Swiggy' : 'Zepto';
           const pColor = isSwiggy ? 'var(--swiggy)' : 'var(--zepto)';

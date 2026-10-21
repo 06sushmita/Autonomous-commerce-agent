@@ -19,7 +19,7 @@ import { createSpendingControlsPlugin } from '@agorio/plugin-spending-controls';
 import { createApprovalWorkflowPlugin } from '@agorio/plugin-approval-workflow';
 import { createAuditTrailPlugin, AuditEntry } from '@agorio/plugin-audit-trail';
 
-import { DeliveryLocation, QuickCommerceBasketProposal, OrderCheckoutResult } from '../mcp/types.js';
+import { DeliveryLocation, QuickCommerceBasketProposal, OrderCheckoutResult, ConstrainedGroceryItem } from '../mcp/types.js';
 import { quickCommerceMcpManager } from '../mcp/mcp-manager.js';
 import { ap2PravaBridge, PendingMandateBundle } from '../prava/ap2-bridge.js';
 import { getPravaClient, PasskeyVerificationRequest } from '../prava/client.js';
@@ -525,18 +525,59 @@ export class AutonomousCommerceRunner {
 
   /**
    * Helper to parse natural language shopping prompt into grocery items
+   * with extracted product brand, name, max cost constraint, quantity, and delivery time constraint.
    */
-  public parseQueryToGroceryItems(query: string): Array<{ name: string; quantity: number }> {
-    const items: Array<{ name: string; quantity: number }> = [];
+  public parseQueryToGroceryItems(query: string): ConstrainedGroceryItem[] {
+    const items: ConstrainedGroceryItem[] = [];
 
-    // 1. Strip conversational lead-ins, follow-up instructions, and trailing constraints
+    // 1. Extract global time constraint, e.g. "in under 15 mins", "within 10 minutes", "in 10 mins"
+    let globalEtaMinutes: number | undefined;
+    const etaMatch = query.match(/(?:in\s+under|under|within|in|less than)\s*(\d+)\s*(?:mins?|minutes?)/i);
+    if (etaMatch) {
+      globalEtaMinutes = parseInt(etaMatch[1], 10);
+    } else if (/\b(?:fast|urgent|urgently|asap)\b/i.test(query)) {
+      globalEtaMinutes = 15;
+    }
+
+    // 2. Extract global budget / cost constraint if present across query, e.g. "budget under 100 rs", "under ₹50"
+    // STRICT: Must require currency symbol or unit (₹, rs, inr, rupees) to prevent matching delivery time (e.g. "under 15 mins")
+    let globalCostCents: number | undefined;
+    const globalCostMatch = query.match(
+      /(?:(?:budget\s*(?:of|is)?|total\s*(?:under|below|max)?|under|below|max|within|less than)\s*(?:₹|rs\.?|inr)\s*(\d+(?:\.\d+)?))|(?:(?:budget\s*(?:of|is)?|under|below|max|within|less than)\s*(\d+(?:\.\d+)?)\s*(?:rs|rupees|inr|bucks))\b/i
+    );
+    if (globalCostMatch) {
+      const valStr = globalCostMatch[1] || globalCostMatch[2];
+      if (valStr) {
+        globalCostCents = Math.round(parseFloat(valStr) * 100);
+      }
+    }
+
+    // 3. Known brands dictionary for quick commerce
+    const knownBrands = [
+      'nandini',
+      'amul',
+      'britannia',
+      'eggoz',
+      'the health factory',
+      'health factory',
+      'milky mist',
+      'mother dairy',
+      'fortune',
+      'aashirvaad',
+      'nestle',
+      'cadbury',
+      'safal',
+      'suguna',
+    ];
+
+    // 4. Strip conversational lead-ins, follow-up instructions, and trailing constraints
     let clean = query
       .replace(/(?:[\r\n]+|\.\s+)(?:if\s+i\s+(?:am\s+)?asking|please\s+(?:show|give|make|pick)|make\s+sure|i\s+want\s+best|give\s+me\s+best).+$/is, '')
       .replace(/^(?:find|search|get|order|buy|show|look for|fetch|i want|please get me|bring me)\s+(?:me\s+)?/i, '')
-      .replace(/\s+(?:in under \d+ mins?|in \d+ mins?|under \d+ mins?|fast|urgent|quickly|asap|from swiggy|from zepto|near me)\.?$/i, '')
+      .replace(/\s+(?:in under \d+ mins?|in \d+ mins?|under \d+ mins?|within \d+ mins?|fast|urgent|quickly|asap|from swiggy|from zepto|near me)\.?$/i, '')
       .trim();
 
-    // 2. Split multiple items by "and", "&", "+", or comma (handling Oxford commas like "milk, bread, and eggs")
+    // 5. Split multiple items by "and", "&", "+", or comma (handling Oxford commas like "milk, bread, and eggs")
     const rawSegments = clean
       .split(/(?:,\s*(?:and\s+)?|\s+and\s+|\s*&\s*|\s*\+\s*)/i)
       .map((s) => s.trim())
@@ -545,6 +586,30 @@ export class AutonomousCommerceRunner {
     for (const segment of rawSegments) {
       let seg = segment;
       let qty = 1;
+      let itemCostCents = globalCostCents;
+      let itemEtaMinutes = globalEtaMinutes;
+
+      // Extract per-item price constraint if specified on this segment (e.g. "milk under 50 rs")
+      const segPriceMatch = seg.match(
+        /(?:(?:under|below|max|within|less than)\s*(?:₹|rs\.?|inr)\s*(\d+(?:\.\d+)?))|(?:(?:under|below|max|within|less than)\s*(\d+(?:\.\d+)?)\s*(?:rs|rupees|inr|bucks))\b/i
+      );
+      if (segPriceMatch) {
+        const valStr = segPriceMatch[1] || segPriceMatch[2];
+        if (valStr) {
+          itemCostCents = Math.round(parseFloat(valStr) * 100);
+        }
+        seg = seg
+          .replace(/(?:under|below|max|within|less than)\s*(?:₹|rs\.?|inr)\s*\d+(?:\.\d+)?/gi, '')
+          .replace(/(?:under|below|max|within|less than)\s*\d+(?:\.\d+)?\s*(?:rs|rupees|inr|bucks)/gi, '')
+          .trim();
+      }
+
+      // Extract per-item ETA constraint if on this segment
+      const segEtaMatch = seg.match(/(?:in\s+under|under|within|in)\s*(\d+)\s*(?:mins?|minutes?)/i);
+      if (segEtaMatch) {
+        itemEtaMinutes = parseInt(segEtaMatch[1], 10);
+        seg = seg.replace(/(?:in\s+under|under|within|in)\s*\d+\s*(?:mins?|minutes?)/gi, '').trim();
+      }
 
       // Handle leading quantity with packaging word, e.g. "2 packets of milk", "1 packet milk", "6 pcs eggs"
       const leadingPacketMatch = seg.match(/^(\d+)\s*(?:packets?|pcs?|pieces?|bottles?|cans?|packs?|boxes?|cartons?|loaf|loaves)\s*(?:of\s+)?(.+)$/i);
@@ -567,20 +632,41 @@ export class AutonomousCommerceRunner {
         }
       }
 
-      // If segment matches "milk 1 litre", "1l milk", etc., standardize generic milk
-      if (/^(?:milk\s+(\d+)\s*(?:l|litre|liter)|(\d+)\s*(?:l|litre|liter)\s+milk)$/i.test(seg)) {
+      // Detect brand in this item segment
+      let brand: string | undefined;
+      const lowerSeg = seg.toLowerCase();
+      for (const b of knownBrands) {
+        if (lowerSeg.includes(b)) {
+          brand = b.charAt(0).toUpperCase() + b.slice(1);
+          break;
+        }
+      }
+
+      // If segment matches "milk 1 litre", "milk 2 litres", "1l milk", etc., standardize generic milk
+      if (/^(?:milk\s+(\d+)\s*(?:l|litre|liter|ltr)s?|(\d+)\s*(?:l|litre|liter|ltr)s?\s+milk)$/i.test(seg)) {
         const m = seg.match(/(\d+)/);
         qty = m ? parseInt(m[1], 10) : 1;
-        seg = 'milk';
+        seg = brand ? `${brand} milk` : 'milk';
       }
 
       if (seg.length > 0) {
-        items.push({ name: seg, quantity: qty });
+        items.push({
+          name: seg,
+          brand,
+          maxCostCents: itemCostCents,
+          quantity: qty,
+          maxEtaMinutes: itemEtaMinutes,
+        });
       }
     }
 
     if (items.length === 0) {
-      items.push({ name: 'groceries', quantity: 1 });
+      items.push({
+        name: 'groceries',
+        quantity: 1,
+        maxCostCents: globalCostCents,
+        maxEtaMinutes: globalEtaMinutes,
+      });
     }
 
     return items;

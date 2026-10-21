@@ -87,18 +87,49 @@ export interface QuickCommerceBasketItem {
   id?: string;
 }
 
+export interface ConstrainedGroceryItem {
+  name: string;
+  brand?: string;
+  maxCostCents?: number;       // In paise (e.g. 5000 = ₹50.00)
+  quantity: number;
+  maxEtaMinutes?: number;      // In minutes (e.g. 15)
+}
+
+export interface ConstraintValidationSummary {
+  allPassed: boolean;
+  brandAccepted?: boolean;
+  costAccepted?: boolean;
+  quantityAccepted?: boolean;
+  etaAccepted?: boolean;
+  details?: string[];
+}
+
 export interface ProductMatchResult {
   requestedName: string;
+  requestedBrand?: string;
   requestedQuantity: number;
   requestedUnit?: string;
+  maxCostCents?: number;
+  maxEtaMinutes?: number;
   matchedItem?: QuickCommerceItem;
   brandMatch: boolean;
   packageSizeMatch: boolean;
+  costMatch?: boolean;
+  etaMatch?: boolean;
   unitPriceCents?: number;
   isVerified: boolean;
   inStock: boolean;
-  status: 'verified_match' | 'size_mismatch' | 'out_of_stock' | 'unverified' | 'missing';
+  status:
+    | 'verified_match'
+    | 'size_mismatch'
+    | 'out_of_stock'
+    | 'unverified'
+    | 'missing'
+    | 'brand_mismatch'
+    | 'cost_exceeded'
+    | 'eta_exceeded';
   notes?: string;
+  rejectionReason?: string;
 }
 
 export interface QuickCommerceBasketProposal {
@@ -134,6 +165,7 @@ export interface QuickCommerceBasketProposal {
   unavailableFields?: string[];
   budgetExceeded?: boolean;
   excessAmountCents?: number;
+  constraintValidation?: ConstraintValidationSummary;
   budgetSuggestion?: {
     text: string;
     alternativeProposal?: QuickCommerceBasketProposal;

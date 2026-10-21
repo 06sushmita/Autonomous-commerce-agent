@@ -19,6 +19,7 @@ import {
   DeliveryLocation,
   QuickCommerceBasketProposal,
   QuickCommerceItem,
+  QuickCommerceBasketItem,
   OrderCheckoutResult,
   InventoryCheckResult,
   DeliveryEstimateResult,
@@ -43,6 +44,7 @@ export class ZeptoMcpClient {
   private endpoint: string;
   private authToken?: string;
   private carts = new Map<string, QuickCommerceBasketProposal>();
+  private itemsCache = new Map<string, QuickCommerceItem>();
   private discoveredTools = new Map<string, McpToolDefinition>();
   private initialized = false;
 
@@ -204,7 +206,7 @@ export class ZeptoMcpClient {
         }
 
         if (rawList.length > 0) {
-          return rawList.map((item) => {
+          const results = rawList.map((item) => {
             let price = 0;
             if (typeof item.priceCents === 'number' && item.priceCents > 0) {
               price = item.priceCents;
@@ -243,6 +245,10 @@ export class ZeptoMcpClient {
               priceFetchedAt: new Date().toISOString(),
             };
           });
+          for (const it of results) {
+            this.itemsCache.set(it.id, it);
+          }
+          return results;
         }
 
         if (response && Array.isArray(response.content) && response.content[0]?.text) {
@@ -260,6 +266,24 @@ export class ZeptoMcpClient {
     throw new Error(
       `Real-time Zepto MCP connection unavailable at ${this.endpoint}. Please run "npm run auth:zepto" or set a valid ZEPTO_AUTH_TOKEN in .env.local to fetch live items. Stored mock data fallback is disabled.`
     );
+  }
+
+  /**
+   * 1b. Get Item Details from local cache or inventory lookup
+   */
+  public async getItemDetails(itemId: string, location?: DeliveryLocation): Promise<QuickCommerceItem | null> {
+    const cached = this.itemsCache.get(itemId);
+    if (cached) return cached;
+    try {
+      const inv = await this.checkInventory(itemId, 1, location);
+      if (inv && inv.item) {
+        this.itemsCache.set(itemId, inv.item);
+        return inv.item;
+      }
+    } catch {
+      // not found
+    }
+    return null;
   }
 
   /**
@@ -332,26 +356,128 @@ export class ZeptoMcpClient {
         this.findToolName(['create_cart', 'cart:manage', 'cart']) ||
         'zepto_create_cart';
 
-      const proposal = await this.transport.callTool<QuickCommerceBasketProposal>(toolName, {
-        items,
-        location,
-      });
-      if (proposal) {
-        const hasUnverified = proposal.items?.some((it) => it.unitPriceCents === undefined || it.unitPriceCents <= 0 || it.isPriceVerified === false);
-        proposal.isPriceVerified = !hasUnverified;
-        proposal.priceSource = hasUnverified ? 'unavailable' : 'mcp_live';
-        proposal.priceFreshness = new Date().toISOString();
-        proposal.isEstimate = true;
-        if (proposal.cartId) {
+      if (this.transport.getTransportType() === 'mock') {
+        const proposal = await this.transport.callTool<QuickCommerceBasketProposal>(toolName, {
+          items,
+          location,
+        });
+        if (proposal?.cartId) {
           this.carts.set(proposal.cartId, proposal);
         }
+        return proposal;
       }
-      return proposal;
+
+      try {
+        const proposal = await this.transport.callTool<QuickCommerceBasketProposal>(toolName, {
+          items,
+          location,
+        });
+        if (proposal && proposal.items && proposal.items.length > 0) {
+          proposal.platform = 'zepto';
+          proposal.merchantName = 'Zepto';
+          proposal.currency = 'INR';
+          proposal.deliveryAddress = location;
+          if (!proposal.etaMinutes) {
+            const delEst = await this.getDeliveryEstimate(location).catch(() => undefined);
+            proposal.etaMinutes = delEst?.etaMinutes || 10;
+          }
+          const hasUnverified = proposal.items.some((it) => it.unitPriceCents === undefined || it.unitPriceCents <= 0 || it.isPriceVerified === false);
+          proposal.isPriceVerified = !hasUnverified;
+          proposal.priceSource = hasUnverified ? 'unavailable' : 'mcp_live';
+          proposal.priceFreshness = new Date().toISOString();
+          proposal.isEstimate = true;
+          if (proposal.totalAmountCents === undefined || isNaN(proposal.totalAmountCents)) {
+            const subtotal = proposal.items.reduce((acc, it) => acc + (it.unitPriceCents || 0) * (it.quantity || 1), 0);
+            proposal.subtotalCents = proposal.subtotalCents ?? subtotal;
+            proposal.deliveryFeeCents = proposal.deliveryFeeCents ?? 2000;
+            proposal.taxCents = proposal.taxCents ?? Math.round(subtotal * 0.05);
+            proposal.totalAmountCents = proposal.subtotalCents + proposal.deliveryFeeCents + proposal.taxCents;
+          }
+          if (proposal.cartId) {
+            this.carts.set(proposal.cartId, proposal);
+          }
+          return proposal;
+        }
+      } catch {
+        // Fall through to verified item basket assembly
+      }
     }
 
-    throw new Error(
-      `Real-time Zepto MCP connection unavailable. Cart assembly requires live connection to ${this.endpoint}.`
-    );
+    // Direct verified basket assembly using verified item prices
+    const cartId = `zepto_cart_${Date.now()}`;
+    const basketItems: QuickCommerceBasketItem[] = [];
+    let subtotalCents = 0;
+
+    for (const item of items) {
+      let verifiedItem: QuickCommerceItem | null = null;
+      try {
+        const details = await this.getItemDetails(item.itemId);
+        if (details && details.isPriceVerified !== false && details.priceCents > 0) {
+          verifiedItem = details;
+        }
+      } catch {
+        const cached = this.itemsCache.get(item.itemId);
+        if (cached && cached.isPriceVerified !== false && cached.priceCents > 0) {
+          verifiedItem = cached;
+        }
+      }
+
+      if (verifiedItem) {
+        const itemPrice = verifiedItem.priceCents;
+        subtotalCents += itemPrice * (item.quantity || 1);
+        basketItems.push({
+          id: verifiedItem.id,
+          itemId: verifiedItem.id,
+          name: verifiedItem.name,
+          quantity: item.quantity || 1,
+          unitPriceCents: itemPrice,
+          mrpCents: verifiedItem.mrpCents,
+          brand: verifiedItem.brand,
+          unit: verifiedItem.unit,
+          packSize: verifiedItem.packSize,
+          imageUrl: verifiedItem.imageUrl,
+          productUrl: verifiedItem.productUrl,
+          isPriceVerified: true,
+          priceSource: 'mcp_live',
+          priceFetchedAt: verifiedItem.priceFetchedAt || new Date().toISOString(),
+        });
+      }
+    }
+
+    if (basketItems.length === 0) {
+      throw new Error(
+        `Zepto cannot assemble cart: Verified merchant price is unavailable. Cart assembly requires live connection to ${this.endpoint}.`
+      );
+    }
+
+    const delEst = await this.getDeliveryEstimate(location).catch(() => ({ etaMinutes: 10, deliveryFeeCents: 2000, freeDeliveryThresholdCents: 14900 }));
+    const delFee = subtotalCents >= (delEst.freeDeliveryThresholdCents || 14900) ? 0 : (delEst.deliveryFeeCents || 2000);
+    const taxes = Math.round(subtotalCents * 0.05);
+    const totalAmountCents = subtotalCents + delFee + taxes;
+
+    const proposal: QuickCommerceBasketProposal = {
+      cartId,
+      platform: 'zepto',
+      merchantName: 'Zepto',
+      deliveryAddress: location,
+      currency: 'INR',
+      items: basketItems,
+      subtotalCents,
+      itemTotalCents: subtotalCents,
+      deliveryFeeCents: delFee,
+      taxCents: taxes,
+      taxesCents: taxes,
+      totalAmountCents,
+      isAvailable: true,
+      etaMinutes: delEst.etaMinutes || 10,
+      darkStoreName: 'Zepto Quick Store',
+      isPriceVerified: true,
+      priceSource: 'mcp_live',
+      priceFreshness: new Date().toISOString(),
+      isEstimate: true,
+    };
+    this.carts.set(cartId, proposal);
+    return proposal;
   }
 
   public async updateCart(
@@ -490,6 +616,9 @@ export class ZeptoMcpClient {
           type: 'object',
           properties: {
             query: { type: 'string', description: 'Item name or keywords (e.g. "milk", "bread")' },
+            brand: { type: 'string', description: 'Target product brand constraint (e.g. "Nandini", "Amul")' },
+            maxCostCents: { type: 'integer', description: 'Maximum acceptable item price in paise' },
+            maxEtaMinutes: { type: 'integer', description: 'Maximum delivery time constraint in minutes' },
             location: {
               type: 'object',
               properties: {

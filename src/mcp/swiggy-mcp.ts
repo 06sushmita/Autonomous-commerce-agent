@@ -592,6 +592,9 @@ export class SwiggyMcpClient {
           type: 'object',
           properties: {
             query: { type: 'string', description: 'Item name or query (e.g. "milk", "bread")' },
+            brand: { type: 'string', description: 'Target product brand constraint (e.g. "Nandini", "Amul")' },
+            maxCostCents: { type: 'integer', description: 'Maximum acceptable item price in paise' },
+            maxEtaMinutes: { type: 'integer', description: 'Maximum delivery time constraint in minutes' },
             location: {
               type: 'object',
               properties: {

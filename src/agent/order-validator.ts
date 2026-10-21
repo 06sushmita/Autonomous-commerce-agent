@@ -73,6 +73,17 @@ export class OrderValidator {
     dailySpendLimitCents: number = 500000,
     isLocationConfirmed: boolean = true
   ): PrePurchaseValidationResult {
+    if (!proposal || !proposal.items || !Array.isArray(proposal.items) || proposal.items.length === 0) {
+      return {
+        valid: false,
+        budgetAllowed: false,
+        stockAvailable: false,
+        locationConfirmed: isLocationConfirmed,
+        remainingDailySpendCents: 0,
+        errorMessage: 'No valid merchant cart proposal or items available.',
+      };
+    }
+
     // 1. Check verified merchant pricing
     if (proposal.isPriceVerified === false) {
       return {
@@ -85,7 +96,7 @@ export class OrderValidator {
       };
     }
 
-    const unverifiedItems = proposal.items.filter((it) => it.isPriceVerified === false || !it.unitPriceCents);
+    const unverifiedItems = (proposal.items || []).filter((it) => it.isPriceVerified === false || !it.unitPriceCents);
     if (unverifiedItems.length > 0) {
       return {
         valid: false,
@@ -106,6 +117,18 @@ export class OrderValidator {
         locationConfirmed: isLocationConfirmed,
         remainingDailySpendCents: 0,
         errorMessage: `Some items in the cart are currently out of stock at the ${proposal.merchantName} dark store.`,
+      };
+    }
+
+    // 2b. Check multi-constraint validation gate
+    if (proposal.constraintValidation && proposal.constraintValidation.allPassed === false) {
+      return {
+        valid: false,
+        budgetAllowed: false,
+        stockAvailable: true,
+        locationConfirmed: isLocationConfirmed,
+        remainingDailySpendCents: 0,
+        errorMessage: `Constraint check failed: Requested product brand, cost, quantity, or delivery SLA constraints could not be fulfilled by ${proposal.merchantName}.`,
       };
     }
 
