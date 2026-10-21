@@ -138,6 +138,36 @@ export class ZeptoMcpClient {
     return undefined;
   }
 
+  private linkedLocationKey: string | null = null;
+
+  public async ensureLocationServiceable(location?: DeliveryLocation): Promise<void> {
+    if (!this.transport || !this.transport.isConnected() || this.transport.getTransportType() === 'mock') {
+      return;
+    }
+    if (!location || (!location.latitude && !location.pincode)) {
+      return;
+    }
+
+    const key = `${location.latitude}_${location.longitude}_${location.pincode}`;
+    if (this.linkedLocationKey === key) {
+      return;
+    }
+
+    try {
+      const toolName =
+        this.findToolName(['get_location_serviceability', 'location_serviceability', 'serviceability']) ||
+        'get_location_serviceability';
+      await this.transport.callTool(toolName, {
+        latitude: location.latitude,
+        longitude: location.longitude,
+        pincode: location.pincode,
+      });
+      this.linkedLocationKey = key;
+    } catch (locErr: any) {
+      console.warn('[Zepto MCP] get_location_serviceability note:', locErr.message);
+    }
+  }
+
   /**
    * 1. Real-time Product Search: Query live Zepto dark-store catalog
    */
@@ -148,6 +178,8 @@ export class ZeptoMcpClient {
 
     if (this.transport && this.transport.isConnected()) {
       try {
+        await this.ensureLocationServiceable(location);
+
         const searchToolName =
           this.findToolName(['search_products', 'catalog.search', 'search']) ||
           'zepto_search_products';
@@ -158,37 +190,70 @@ export class ZeptoMcpClient {
         });
 
         // Normalize response from various MCP / UCP tool response shapes
+        let rawList: any[] = [];
         if (Array.isArray(response)) {
-          if (response.length > 0) return response;
+          rawList = response;
+        } else if (response && Array.isArray(response.structuredContent?.products)) {
+          rawList = response.structuredContent.products;
+        } else if (response && Array.isArray(response.structuredContent?.items)) {
+          rawList = response.structuredContent.items;
+        } else if (response && Array.isArray(response.items)) {
+          rawList = response.items;
+        } else if (response && Array.isArray(response.products)) {
+          rawList = response.products;
         }
-        if (response && Array.isArray(response.items) && response.items.length > 0) {
-          return response.items;
+
+        if (rawList.length > 0) {
+          return rawList.map((item) => {
+            let price = 0;
+            if (typeof item.priceCents === 'number' && item.priceCents > 0) {
+              price = item.priceCents;
+            } else if (typeof item.price === 'number' && item.price > 0) {
+              // In Zepto live MCP structuredContent, price is already in paise integer (e.g. 2600 = ₹26.00)
+              price = item.price >= 100 && Number.isInteger(item.price) ? item.price : Math.round(item.price * 100);
+            }
+
+            let mrp = price;
+            if (typeof item.mrpCents === 'number' && item.mrpCents > 0) {
+              mrp = item.mrpCents;
+            } else if (typeof item.mrp === 'number' && item.mrp > 0) {
+              mrp = item.mrp >= 100 && Number.isInteger(item.mrp) ? item.mrp : Math.round(item.mrp * 100);
+            }
+
+            const isVerified = price > 0;
+            return {
+              ...item,
+              id: item.id || item.itemId || item.productVariantId || `zepto_${item.name}`,
+              platform: 'zepto' as const,
+              merchantName: 'Zepto',
+              priceCents: price,
+              mrpCents: mrp,
+              currency: 'INR' as const,
+              brand: item.brand || (item.name ? item.name.split(' ')[0] : 'Zepto'),
+              packSize: item.packSize || item.unit,
+              unit: item.unit || item.packSize,
+              imageUrl: item.imageUrl || item.image,
+              productUrl:
+                item.productUrl ||
+                `https://www.zeptonow.com/search?q=${encodeURIComponent(item.name)}`,
+              etaMinutes: item.etaMinutes || 10,
+              inStock: isVerified && item.inStock !== false,
+              isPriceVerified: isVerified,
+              priceSource: isVerified ? ('mcp_live' as const) : ('unavailable' as const),
+              priceFetchedAt: new Date().toISOString(),
+            };
+          });
         }
-        if (response && Array.isArray(response.products) && response.products.length > 0) {
-          return response.products;
-        }
+
         if (response && Array.isArray(response.content) && response.content[0]?.text) {
           const text = response.content[0].text;
           if (text.includes('Registration required') || response.isError) {
-            // Zepto server registration barrier; query live web catalog
-            const { RealtimeCommerceFetcher } = await import('./realtime-search.js');
-            return await RealtimeCommerceFetcher.searchLiveItems(query, 'zepto', location);
+            throw new Error(`Zepto MCP requires active authentication: ${text}. Stored demo data fallback is prohibited.`);
           }
         }
+        return [];
       } catch (err: any) {
-        const msg = String(err?.message || err);
-        if (
-          msg.includes('401') ||
-          msg.includes('auth:zepto') ||
-          msg.toLowerCase().includes('unauthorized') ||
-          msg.toLowerCase().includes('timed out') ||
-          msg.toLowerCase().includes('timeout')
-        ) {
-          throw err;
-        }
-        // Fall back to live network catalog
-        const { RealtimeCommerceFetcher } = await import('./realtime-search.js');
-        return await RealtimeCommerceFetcher.searchLiveItems(query, 'zepto', location);
+        throw err;
       }
     }
 
@@ -206,6 +271,7 @@ export class ZeptoMcpClient {
     location?: DeliveryLocation
   ): Promise<InventoryCheckResult> {
     if (this.transport && this.transport.isConnected()) {
+      await this.ensureLocationServiceable(location);
       const toolName =
         this.findToolName(['inventory_check', 'inventory', 'lookup']) ||
         'zepto_inventory_check';
@@ -261,6 +327,7 @@ export class ZeptoMcpClient {
     location: DeliveryLocation
   ): Promise<QuickCommerceBasketProposal> {
     if (this.transport && this.transport.isConnected()) {
+      await this.ensureLocationServiceable(location);
       const toolName =
         this.findToolName(['create_cart', 'cart:manage', 'cart']) ||
         'zepto_create_cart';
@@ -269,8 +336,15 @@ export class ZeptoMcpClient {
         items,
         location,
       });
-      if (proposal?.cartId) {
-        this.carts.set(proposal.cartId, proposal);
+      if (proposal) {
+        const hasUnverified = proposal.items?.some((it) => it.unitPriceCents === undefined || it.unitPriceCents <= 0 || it.isPriceVerified === false);
+        proposal.isPriceVerified = !hasUnverified;
+        proposal.priceSource = hasUnverified ? 'unavailable' : 'mcp_live';
+        proposal.priceFreshness = new Date().toISOString();
+        proposal.isEstimate = true;
+        if (proposal.cartId) {
+          this.carts.set(proposal.cartId, proposal);
+        }
       }
       return proposal;
     }

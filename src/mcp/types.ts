@@ -28,6 +28,11 @@ export interface QuickCommerceItem {
   productUrl?: string; // Direct link to product on merchant platform
   etaMinutes?: number;
   metadata?: Record<string, unknown>;
+  brand?: string;
+  packSize?: string;
+  isPriceVerified?: boolean;
+  priceSource?: 'mcp_live' | 'merchant_confirmed' | 'unavailable';
+  priceFetchedAt?: string;
 }
 
 export interface ItemDetails extends QuickCommerceItem {
@@ -75,6 +80,25 @@ export interface QuickCommerceBasketItem {
   productUrl?: string;
   unit?: string;
   brand?: string;
+  packSize?: string;
+  isPriceVerified?: boolean;
+  priceSource?: 'mcp_live' | 'merchant_confirmed' | 'unavailable';
+  priceFetchedAt?: string;
+  id?: string;
+}
+
+export interface ProductMatchResult {
+  requestedName: string;
+  requestedQuantity: number;
+  requestedUnit?: string;
+  matchedItem?: QuickCommerceItem;
+  brandMatch: boolean;
+  packageSizeMatch: boolean;
+  unitPriceCents?: number;
+  isVerified: boolean;
+  inStock: boolean;
+  status: 'verified_match' | 'size_mismatch' | 'out_of_stock' | 'unverified' | 'missing';
+  notes?: string;
 }
 
 export interface QuickCommerceBasketProposal {
@@ -92,13 +116,29 @@ export interface QuickCommerceBasketProposal {
   unavailableItems?: string[];
   cartId: string;
   bestItem?: QuickCommerceItem;
+  bestItems?: QuickCommerceItem[];
   resolvedItemsContext?: QuickCommerceItem[];
   itemTotalCents?: number;
+  handlingFeeCents?: number;
+  platformFeeCents?: number;
   surgeFeeCents?: number;
+  discountCents?: number;
   taxesCents?: number;
   darkStoreName?: string;
   rainSurgeActive?: boolean;
   freeDeliveryThresholdCents?: number;
+  isPriceVerified?: boolean;
+  priceSource?: 'mcp_live' | 'merchant_confirmed' | 'unavailable';
+  priceFreshness?: string;
+  isEstimate?: boolean;
+  unavailableFields?: string[];
+  budgetExceeded?: boolean;
+  excessAmountCents?: number;
+  budgetSuggestion?: {
+    text: string;
+    alternativeProposal?: QuickCommerceBasketProposal;
+    requiredApproval?: string;
+  };
 }
 
 export interface OrderCheckoutResult {

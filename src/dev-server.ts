@@ -22,7 +22,29 @@ import {
   SUSHMITA_USER,
   DeliveryLocation,
   AuthUser,
+  QuickCommerceItem,
+  geocodeAddress,
 } from './index.js';
+
+function lookupCoordinatesForPincode(pincode: string, addressText?: string): { latitude: number; longitude: number } | undefined {
+  const pin = pincode.trim();
+  if (pin.startsWith('560')) return { latitude: 12.9298, longitude: 77.6835 }; // Bengaluru
+  if (pin.startsWith('400')) return { latitude: 19.1176, longitude: 72.9060 }; // Mumbai (Powai)
+  if (pin.startsWith('421')) return { latitude: 19.2183, longitude: 73.0867 }; // Dombivli / Thane
+  if (pin.startsWith('110')) return { latitude: 28.6139, longitude: 77.2090 }; // Delhi
+  if (pin.startsWith('122')) return { latitude: 28.4595, longitude: 77.0266 }; // Gurugram
+  if (pin.startsWith('201')) return { latitude: 28.5355, longitude: 77.3910 }; // Noida
+  if (pin.startsWith('500')) return { latitude: 17.3850, longitude: 78.4867 }; // Hyderabad
+  if (pin.startsWith('600')) return { latitude: 13.0827, longitude: 80.2707 }; // Chennai
+  if (pin.startsWith('411')) return { latitude: 18.5204, longitude: 73.8567 }; // Pune
+  if (pin.startsWith('700')) return { latitude: 22.5726, longitude: 88.3639 }; // Kolkata
+
+  const text = (addressText || '').toLowerCase();
+  if (text.includes('bangalore') || text.includes('bengaluru') || text.includes('bellandur')) return { latitude: 12.9298, longitude: 77.6835 };
+  if (text.includes('mumbai') || text.includes('powai') || text.includes('andheri')) return { latitude: 19.1176, longitude: 72.9060 };
+  if (text.includes('dombivli') || text.includes('thane') || text.includes('kopar')) return { latitude: 19.2183, longitude: 73.0867 };
+  return undefined;
+}
 
 const PORT = process.env.PORT ? parseInt(process.env.PORT, 10) : 3000;
 
@@ -168,6 +190,22 @@ async function handleRequest(req: http.IncomingMessage, res: http.ServerResponse
     if (method === 'POST' && url.pathname === '/api/auth/signup') {
       const body = await readJson();
       try {
+        let signupLat = body.latitude ? parseFloat(body.latitude) : undefined;
+        let signupLng = body.longitude ? parseFloat(body.longitude) : undefined;
+        if (signupLat === undefined || signupLng === undefined || isNaN(signupLat) || isNaN(signupLng)) {
+          const guessed = lookupCoordinatesForPincode(body.pincode, body.address);
+          if (guessed) {
+            signupLat = guessed.latitude;
+            signupLng = guessed.longitude;
+          } else {
+            const geo = await geocodeAddress(body.address, body.pincode);
+            if (geo) {
+              signupLat = geo.latitude;
+              signupLng = geo.longitude;
+            }
+          }
+        }
+
         const newUser = await authProvider.registerWithClerk({
           displayName: body.displayName,
           email: body.email,
@@ -175,8 +213,8 @@ async function handleRequest(req: http.IncomingMessage, res: http.ServerResponse
           password: body.password,
           address: body.address,
           pincode: body.pincode,
-          latitude: body.latitude ? parseFloat(body.latitude) : undefined,
-          longitude: body.longitude ? parseFloat(body.longitude) : undefined,
+          latitude: signupLat,
+          longitude: signupLng,
           dailySpendLimitINR: body.dailySpendLimitINR ? parseFloat(body.dailySpendLimitINR) : 5000,
         });
         const { password: _, ...safeUser } = newUser;
@@ -281,12 +319,28 @@ async function handleRequest(req: http.IncomingMessage, res: http.ServerResponse
         return sendJson(400, { error: 'Address and pincode are required.' });
       }
       try {
+        let effLat = latitude !== undefined && latitude !== '' ? parseFloat(latitude) : undefined;
+        let effLng = longitude !== undefined && longitude !== '' ? parseFloat(longitude) : undefined;
+        if (effLat === undefined || effLng === undefined || isNaN(effLat) || isNaN(effLng)) {
+          const guessed = lookupCoordinatesForPincode(pincode, address);
+          if (guessed) {
+            effLat = guessed.latitude;
+            effLng = guessed.longitude;
+          } else {
+            const geo = await geocodeAddress(address, pincode, body.city);
+            if (geo) {
+              effLat = geo.latitude;
+              effLng = geo.longitude;
+            }
+          }
+        }
+
         const updatedUser = authProvider.updateUserDeliveryLocation(
           user.id,
           address.trim(),
           pincode.trim(),
-          latitude ? parseFloat(latitude) : undefined,
-          longitude ? parseFloat(longitude) : undefined
+          effLat,
+          effLng
         );
         const { password: _, ...safeUser } = updatedUser;
         return sendJson(200, {
@@ -349,7 +403,11 @@ async function handleRequest(req: http.IncomingMessage, res: http.ServerResponse
       let errorMsg: string | undefined;
 
       try {
-        turn = await autonomousCommerceRunner.processShoppingTurn(sessionId, query);
+        turn = await autonomousCommerceRunner.processShoppingTurn(
+          sessionId,
+          query,
+          { confirmed: true, override: userLocation }
+        );
       } catch (err: any) {
         errorMsg = err.message;
       }
@@ -369,36 +427,50 @@ async function handleRequest(req: http.IncomingMessage, res: http.ServerResponse
           `https://www.zeptonow.com/search?q=${encodeURIComponent(item.name)}`,
       }));
 
-      // Determine the single best choice item
-      const bestItem =
-        turn?.proposal?.bestItem ||
-        (turn?.proposal?.items?.[0]
-          ? {
-              id: turn.proposal.items[0].itemId,
-              name: turn.proposal.items[0].name,
+      // Determine best items (supporting multiple items when query requests 2 or more items!)
+      const rawBestItems: QuickCommerceItem[] =
+        (turn?.proposal?.bestItems && turn.proposal.bestItems.length > 0)
+          ? turn.proposal.bestItems
+          : (turn?.proposal?.items && turn.proposal.items.length > 0)
+          ? turn.proposal.items.map((it: any) => ({
+              id: it.itemId || it.id,
+              name: it.name,
               platform: turn.proposal.platform,
               merchantName: turn.proposal.merchantName,
-              priceCents: turn.proposal.items[0].unitPriceCents,
-              mrpCents: turn.proposal.items[0].mrpCents,
-              imageUrl: turn.proposal.items[0].imageUrl,
-              productUrl: turn.proposal.items[0].productUrl,
-              unit: turn.proposal.items[0].unit,
-              brand: turn.proposal.items[0].brand,
+              priceCents: it.unitPriceCents || it.priceCents,
+              mrpCents: it.mrpCents,
+              imageUrl: it.imageUrl,
+              productUrl: it.productUrl || (turn.proposal.platform === 'zepto'
+                ? `https://www.zeptonow.com/search?q=${encodeURIComponent(it.name)}`
+                : `https://www.swiggy.com/instamart/search?query=${encodeURIComponent(it.name)}`),
+              unit: it.unit,
+              brand: it.brand,
               etaMinutes: turn.proposal.etaMinutes,
-            }
-          : undefined) ||
+              isPriceVerified: it.isPriceVerified !== false,
+            }))
+          : [];
+
+      const bestItem =
+        turn?.proposal?.bestItem ||
+        rawBestItems[0] ||
         swiggyItems[0] ||
         zeptoItems[0];
 
-      if (bestItem && !bestItem.productUrl) {
-        bestItem.productUrl =
-          bestItem.platform === 'zepto'
-            ? `https://www.zeptonow.com/search?q=${encodeURIComponent(bestItem.name)}`
-            : `https://www.swiggy.com/instamart/search?query=${encodeURIComponent(bestItem.name)}`;
-      }
+      const bestItems = rawBestItems.length > 0 ? rawBestItems : bestItem ? [bestItem] : [];
+
+      // Ensure all best items have product URLs
+      bestItems.forEach((it) => {
+        if (!it.productUrl) {
+          it.productUrl =
+            it.platform === 'zepto'
+              ? `https://www.zeptonow.com/search?q=${encodeURIComponent(it.name)}`
+              : `https://www.swiggy.com/instamart/search?query=${encodeURIComponent(it.name)}`;
+        }
+      });
 
       if (turn?.proposal) {
-        turn.proposal.bestItem = bestItem;
+        turn.proposal.bestItem = bestItems[0] || bestItem;
+        turn.proposal.bestItems = bestItems;
       }
 
       // Format clean, conversational AI response
@@ -409,14 +481,31 @@ async function handleRequest(req: http.IncomingMessage, res: http.ServerResponse
 
       if (swiggyCount > 0 || zeptoCount > 0) {
         reply += `Found **${swiggyCount} live items on Swiggy** and **${zeptoCount} live items on Zepto**.\n`;
+      } else {
+        reply += `⚠️ No live products found on Swiggy or Zepto for "${query}". Demo items and fabricated fallback prices are strictly prohibited.\n`;
       }
 
       if (turn && turn.proposal) {
-        const titleStr = bestItem ? `**${bestItem.name}**` : 'Selected Items';
-        reply += `\n⭐ **Agent's Top Choice:** ${titleStr}\n`;
-        reply += `💡 **Reason:** ${turn.recommendationReason}\n`;
-        reply += `Total payable is **₹${(turn.proposal.totalAmountCents / 100).toFixed(2)}** with an estimated delivery time of **${turn.proposal.etaMinutes} minutes**.\n\n`;
-        reply += `Please review the spotlight top choice below and authorize on behalf of **${user.displayName}** using your Biometric Passkey.`;
+        if (bestItems.length > 1) {
+          reply += `\n⭐ **Agent's Top Choices for Your Requested Items:**\n`;
+          bestItems.forEach((it, idx) => {
+            const itemPriceStr = (it.priceCents / 100).toFixed(2);
+            const unitStr = it.unit ? ` (${it.unit})` : '';
+            reply += `  ${idx + 1}. **${it.name}**${unitStr} — **₹${itemPriceStr}** from **${it.merchantName || turn.proposal.merchantName}**\n`;
+          });
+        } else {
+          const titleStr = bestItem ? `**${bestItem.name}**` : 'Selected Items';
+          reply += `\n⭐ **Agent's Top Choice:** ${titleStr}\n`;
+        }
+        reply += `\n💡 **Reason:** ${turn.recommendationReason}\n`;
+        reply += `Total payable is **₹${(turn.proposal.totalAmountCents / 100).toFixed(2)}** (estimated) with an ETA of **${turn.proposal.etaMinutes} minutes**.\n`;
+        if (turn.proposal.budgetSuggestion) {
+          reply += `\n🛡️ **Budget Advisory:** ${turn.proposal.budgetSuggestion.text}\n`;
+        }
+        if (turn.passkeyRequired) {
+          const countDesc = bestItems.length > 1 ? `all ${bestItems.length} top choices` : 'the spotlight top choice';
+          reply += `\nPlease review ${countDesc} below and authorize on behalf of **${user.displayName}** using your Biometric Passkey.`;
+        }
       } else if (errorMsg) {
         reply += `\n⚠️ Note: ${errorMsg}`;
       }
@@ -426,7 +515,8 @@ async function handleRequest(req: http.IncomingMessage, res: http.ServerResponse
         sessionId,
         swiggyItems,
         zeptoItems,
-        bestItem,
+        bestItem: bestItems[0] || bestItem,
+        bestItems,
         turn,
         proposal: turn?.proposal,
         recommendationReason: turn?.recommendationReason,
@@ -493,29 +583,57 @@ async function handleRequest(req: http.IncomingMessage, res: http.ServerResponse
         return sendJson(400, { error: 'Missing sessionId or mandateId' });
       }
 
-      const result = await autonomousCommerceRunner.authorizeAndExecuteCheckout(
-        sessionId,
-        mandateId,
-        {
+      try {
+        const result = await autonomousCommerceRunner.authorizeAndExecuteCheckout(
+          sessionId,
           mandateId,
-          challengeId: body.challengeId || 'prava_chal_live',
-          clientDataJSON: Buffer.from('prava_fido2_client_data').toString('base64url'),
-          authenticatorData: Buffer.from('prava_fido2_auth_data').toString('base64url'),
-          signature: body.signature || 'prava_biometric_passkey_sig',
-        },
-        body.idempotencyKey,
-        user.id
-      );
+          {
+            mandateId,
+            challengeId: body.challengeId || 'prava_chal_live',
+            clientDataJSON: Buffer.from('prava_fido2_client_data').toString('base64url'),
+            authenticatorData: Buffer.from('prava_fido2_auth_data').toString('base64url'),
+            signature: body.signature || 'prava_biometric_passkey_sig',
+          },
+          body.idempotencyKey,
+          user.id
+        );
 
-      return sendJson(200, {
-        ...result,
-        orderedFor: {
-          name: user.displayName,
-          phone: user.phone,
-          address: user.defaultAddress,
-          pincode: user.defaultPincode,
-        },
-      });
+        return sendJson(200, {
+          ...result,
+          orderedFor: {
+            name: user.displayName,
+            phone: user.phone,
+            address: user.defaultAddress,
+            pincode: user.defaultPincode,
+          },
+        });
+      } catch (checkoutErr: any) {
+        const msg = checkoutErr.message || 'Checkout failed';
+        if (
+          msg.includes('Daily spend limit') ||
+          msg.includes('Daily budget') ||
+          msg.includes('limit exceeded') ||
+          msg.includes('daily spend allowance') ||
+          msg.includes('exceeds your remaining daily')
+        ) {
+          return sendJson(422, {
+            success: false,
+            error: msg,
+            code: 'DAILY_BUDGET_EXCEEDED',
+          });
+        }
+        if (msg.includes('Mandate') && msg.includes('consumed')) {
+          return sendJson(409, {
+            success: false,
+            error: msg,
+            code: 'MANDATE_ALREADY_CONSUMED',
+          });
+        }
+        return sendJson(400, {
+          success: false,
+          error: msg,
+        });
+      }
     }
 
     // 10. Web UI View
@@ -1239,6 +1357,58 @@ function renderWebDashboard(): string {
       font-size: 16px;
       color: #fff;
     }
+    .fee-breakdown-card {
+      background: rgba(15, 23, 42, 0.75);
+      border: 1px solid rgba(59, 130, 246, 0.25);
+      border-radius: 10px;
+      padding: 12px 16px;
+      margin-bottom: 12px;
+      font-size: 12px;
+    }
+    .fee-row {
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+      padding: 3px 0;
+      color: #94a3b8;
+    }
+    .fee-row.total-row {
+      margin-top: 6px;
+      padding-top: 6px;
+      border-top: 1px dashed rgba(148, 163, 184, 0.3);
+      color: #f8fafc;
+      font-weight: 700;
+      font-size: 14px;
+    }
+    .verified-price-tag {
+      display: inline-flex;
+      align-items: center;
+      gap: 4px;
+      font-size: 10px;
+      font-weight: 600;
+      padding: 2px 7px;
+      border-radius: 6px;
+    }
+    .verified-price-tag.verified {
+      background: rgba(16, 185, 129, 0.15);
+      color: #10b981;
+      border: 1px solid rgba(16, 185, 129, 0.3);
+    }
+    .verified-price-tag.unverified {
+      background: rgba(239, 68, 68, 0.15);
+      color: #f87171;
+      border: 1px solid rgba(239, 68, 68, 0.3);
+    }
+    .budget-alert-banner {
+      background: rgba(245, 158, 11, 0.15);
+      border: 1px solid rgba(245, 158, 11, 0.4);
+      border-radius: 8px;
+      padding: 10px 14px;
+      margin-bottom: 12px;
+      color: #fbbf24;
+      font-size: 12px;
+      line-height: 1.4;
+    }
     .btn-passkey {
       background: linear-gradient(135deg, #1d4ed8 0%, #2563eb 50%, #0284c7 100%);
       color: #fff;
@@ -1681,11 +1851,18 @@ function renderWebDashboard(): string {
         <button class="modal-close" onclick="closeAddressModal()">✕</button>
       </div>
       <div class="modal-body">
-        <p style="font-size: 12px; color: var(--text-muted); margin-bottom: 14px;">
-          Pre-set or update your delivery location anytime. The agent immediately routes dark stores on Swiggy and Zepto to this location.
+        <p style="font-size: 12px; color: var(--text-muted); margin-bottom: 12px;">
+          Enter any street address & pincode across India, or use your GPS location. The autonomous agent dynamically geocodes coordinates and directly routes Swiggy Instamart and Zepto to your exact location.
         </p>
 
-        <div style="font-size: 11px; font-weight: 700; color: #94a3b8; text-transform: uppercase; margin-bottom: 8px;">Quick Locations:</div>
+        <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 14px;">
+          <button type="button" class="btn-auth-switch" onclick="detectCurrentLocation()" style="display: flex; align-items: center; gap: 6px; padding: 7px 14px; font-weight: 600; color: #2563eb; border-color: #93c5fd; background: #eff6ff;">
+            <span>📍</span> <span id="gpsBtnText">Use My Current GPS Location</span>
+          </button>
+          <span style="font-size: 11px; color: #64748b;">Zero address fallbacks</span>
+        </div>
+
+        <div style="font-size: 11px; font-weight: 700; color: #94a3b8; text-transform: uppercase; margin-bottom: 8px;">Quick Shortcuts:</div>
         <div class="quick-preset-cards" style="margin-bottom: 14px;">
           <div class="preset-card" onclick="presetAddress('A/30, Sai Anant Darshan, Kopar Rd, Shastri Nagar, Dombivli West, Dombivli, Maharashtra 421202', '421202', 19.2183, 73.0867)">
             <div class="preset-name">Dombivli West</div>
@@ -1702,21 +1879,21 @@ function renderWebDashboard(): string {
         </div>
 
         <div class="form-group">
-          <label>Street Address</label>
-          <input type="text" id="addressStreetInput" placeholder="Flat / House No, Building, Street, Area">
+          <label>Custom Street Address (Anywhere in India)</label>
+          <input type="text" id="addressStreetInput" placeholder="House/Flat No, Building, Street, Area">
         </div>
         <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 10px;">
           <div class="form-group">
-            <label>Pincode</label>
-            <input type="text" id="addressPincodeInput" placeholder="421202">
+            <label>6-Digit Pincode</label>
+            <input type="text" id="addressPincodeInput" placeholder="e.g. 160018, 302017, 560103" maxlength="6" oninput="clearStaleCoords()">
           </div>
           <div class="form-group">
             <label>City / Region</label>
-            <input type="text" id="addressCityInput" placeholder="Mumbai / Maharashtra">
+            <input type="text" id="addressCityInput" placeholder="e.g. Chandigarh, Jaipur, Pune">
           </div>
         </div>
 
-        <button class="btn-submit" onclick="submitAddressUpdate()">Update Delivery Location & Dark Stores</button>
+        <button class="btn-submit" id="submitAddressBtn" onclick="submitAddressUpdate()">Update Delivery Location & Dark Stores</button>
       </div>
     </div>
   </div>
@@ -1909,7 +2086,7 @@ function renderWebDashboard(): string {
       if (tabAcc) tabAcc.style.display = 'none';
     }
 
-    function setUserUI(user) {
+    function setUserUI(user, remainingSpendINR) {
       activeUser = user;
       if (user.id) {
         localStorage.setItem('aca_active_user_id', user.id);
@@ -1924,6 +2101,7 @@ function renderWebDashboard(): string {
         .slice(0, 2) || '👤';
 
       const limitINR = ((user.dailySpendLimitCents || 500000) / 100).toFixed(2);
+      const remText = remainingSpendINR ? (' (₹' + parseFloat(remainingSpendINR).toFixed(2) + ' left)') : '';
 
       document.getElementById('navAvatar').textContent = initials;
       document.getElementById('navUserName').innerHTML = (user.displayName || 'User') + ' <span style="font-size:10px;">▼</span>';
@@ -1936,7 +2114,7 @@ function renderWebDashboard(): string {
           '<span>•</span>' +
           '<span style="cursor: pointer;" onclick="openAddressModal()" title="Click to edit delivery address">📍 Delivery: <b id="bannerUserAddress">' + (user.defaultAddress || '') + ' (' + (user.defaultPincode || '') + ')</b> <span style="font-size:11px; color:#38bdf8;">✏️</span></span>' +
           '<span>•</span>' +
-          '<span style="cursor: pointer;" onclick="openWalletModal()" title="Click to edit daily budget">🛡️ Limit: <b id="bannerUserLimit">₹' + limitINR + ' / day</b> <span style="font-size:11px; color:#10b981;">✏️ Edit</span></span>';
+          '<span style="cursor: pointer;" onclick="openWalletModal()" title="Click to edit daily budget">🛡️ Limit: <b id="bannerUserLimit">₹' + limitINR + ' / day' + remText + '</b> <span style="font-size:11px; color:#10b981;">✏️ Edit</span></span>';
       }
 
       const bannerButtons = document.getElementById('bannerButtons');
@@ -1951,7 +2129,7 @@ function renderWebDashboard(): string {
       const wLimit = document.getElementById('walletModalLimit');
       if (wLimit) wLimit.textContent = '₹' + limitINR;
       const wRemaining = document.getElementById('walletModalRemaining');
-      if (wRemaining) wRemaining.textContent = '₹' + limitINR;
+      if (wRemaining) wRemaining.textContent = '₹' + (remainingSpendINR ? parseFloat(remainingSpendINR).toFixed(2) : limitINR);
       const wInput = document.getElementById('walletLimitInput');
       if (wInput) wInput.value = Math.round((user.dailySpendLimitCents || 500000) / 100);
 
@@ -1990,16 +2168,30 @@ function renderWebDashboard(): string {
     }
 
     // Wallet & Budget Management Functions
-    function openWalletModal() {
+    async function openWalletModal() {
       if (!activeUser) {
         openAuthModal('signup');
         return;
       }
       const limitINR = ((activeUser.dailySpendLimitCents || 500000) / 100).toFixed(2);
       document.getElementById('walletModalLimit').textContent = '₹' + limitINR;
-      document.getElementById('walletModalRemaining').textContent = '₹' + limitINR;
       document.getElementById('walletLimitInput').value = Math.round((activeUser.dailySpendLimitCents || 500000) / 100);
       document.getElementById('walletModal').style.display = 'flex';
+
+      try {
+        const res = await fetch('/api/me/wallet');
+        if (res.ok) {
+          const wdata = await res.json();
+          if (wdata.remainingSpendINR !== undefined) {
+            document.getElementById('walletModalRemaining').textContent = '₹' + parseFloat(wdata.remainingSpendINR).toFixed(2);
+          }
+          if (wdata.dailyLimitINR !== undefined) {
+            document.getElementById('walletModalLimit').textContent = '₹' + parseFloat(wdata.dailyLimitINR).toFixed(2);
+          }
+        }
+      } catch (err) {
+        console.error('Error fetching live wallet spend:', err);
+      }
     }
     function closeWalletModal() {
       document.getElementById('walletModal').style.display = 'none';
@@ -2049,17 +2241,56 @@ function renderWebDashboard(): string {
     function closeAddressModal() {
       document.getElementById('addressModal').style.display = 'none';
     }
+    function clearStaleCoords() {
+      delete document.getElementById('addressStreetInput').dataset.lat;
+      delete document.getElementById('addressStreetInput').dataset.lng;
+    }
+    function detectCurrentLocation() {
+      if (!navigator.geolocation) {
+        alert('Geolocation is not supported by your browser.');
+        return;
+      }
+      const btn = document.getElementById('gpsBtnText');
+      if (btn) btn.textContent = 'Locating GPS...';
+      navigator.geolocation.getCurrentPosition(
+        async (pos) => {
+          const lat = pos.coords.latitude;
+          const lng = pos.coords.longitude;
+          document.getElementById('addressStreetInput').dataset.lat = lat;
+          document.getElementById('addressStreetInput').dataset.lng = lng;
+          if (btn) btn.textContent = 'Resolving address...';
+          try {
+            const res = await fetch('https://nominatim.openstreetmap.org/reverse?lat=' + lat + '&lon=' + lng + '&format=json');
+            if (res.ok) {
+              const data = await res.json();
+              if (data && data.address) {
+                document.getElementById('addressStreetInput').value = data.display_name.split(',').slice(0, 3).join(', ');
+                if (data.address.postcode) {
+                  document.getElementById('addressPincodeInput').value = data.address.postcode.replace(/[^0-9]/g, '');
+                }
+                document.getElementById('addressCityInput').value = data.address.city || data.address.town || data.address.state || '';
+              }
+            }
+          } catch {}
+          if (btn) btn.textContent = '📍 GPS Detected!';
+        },
+        (err) => {
+          if (btn) btn.textContent = 'Use My Current GPS Location';
+          alert('Could not retrieve GPS location: ' + err.message + '. You can enter your address and pincode manually.');
+        },
+        { enableHighAccuracy: true, timeout: 10000 }
+      );
+    }
     function presetAddress(addr, pin, lat, lng) {
       document.getElementById('addressStreetInput').value = addr;
       document.getElementById('addressPincodeInput').value = pin;
-      if (lat && lng) {
-        document.getElementById('addressStreetInput').dataset.lat = lat;
-        document.getElementById('addressStreetInput').dataset.lng = lng;
-      }
+      document.getElementById('addressStreetInput').dataset.lat = lat ? String(lat) : '';
+      document.getElementById('addressStreetInput').dataset.lng = lng ? String(lng) : '';
     }
     async function submitAddressUpdate() {
       const address = document.getElementById('addressStreetInput').value.trim();
       const pincode = document.getElementById('addressPincodeInput').value.trim();
+      const city = document.getElementById('addressCityInput') ? document.getElementById('addressCityInput').value.trim() : '';
       const lat = document.getElementById('addressStreetInput').dataset.lat;
       const lng = document.getElementById('addressStreetInput').dataset.lng;
 
@@ -2067,22 +2298,43 @@ function renderWebDashboard(): string {
         alert('Please provide both delivery address and pincode.');
         return;
       }
+
+      const submitBtn = document.getElementById('submitAddressBtn');
+      if (submitBtn) {
+        submitBtn.disabled = true;
+        submitBtn.textContent = 'Routing to Your Dark Store...';
+      }
+
       try {
         const res = await fetch('/api/me/address', {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({ address, pincode, latitude: lat, longitude: lng })
+          body: JSON.stringify({
+            address,
+            pincode,
+            city,
+            latitude: lat || undefined,
+            longitude: lng || undefined,
+            userId: activeUser ? activeUser.id : undefined,
+          })
         });
         const data = await res.json();
         if (data.success && data.user) {
+          activeUser = data.user;
           setUserUI(data.user);
+          activeSessionId = null; // Re-initialize agent session with the new dark store location
           closeAddressModal();
-          appendAgentMessage('📍 **Delivery Location Updated:** Set to **' + data.user.defaultAddress + ' (' + data.user.defaultPincode + ')**. Dark-store searches will now route here.');
+          appendAgentMessage('📍 **Delivery Location Updated:** Set to **' + data.user.defaultAddress + ' (' + data.user.defaultPincode + ')**. Dark-store searches will now route directly to this specified location.');
         } else {
           alert(data.error || 'Failed to update delivery address');
         }
       } catch (err) {
         alert('Address update request failed: ' + err.message);
+      } finally {
+        if (submitBtn) {
+          submitBtn.disabled = false;
+          submitBtn.textContent = 'Update Delivery Location & Dark Stores';
+        }
       }
     }
 
@@ -2314,10 +2566,152 @@ function renderWebDashboard(): string {
       const swiggyItems = data.swiggyItems || [];
       const zeptoItems = data.zeptoItems || [];
       const allItems = [...swiggyItems, ...zeptoItems];
-      const best = data.bestItem || (data.proposal && data.proposal.bestItem) || allItems[0];
+      const bestItems = (data.bestItems && data.bestItems.length > 0)
+        ? data.bestItems
+        : (data.proposal && data.proposal.bestItems && data.proposal.bestItems.length > 0)
+        ? data.proposal.bestItems
+        : (data.bestItem ? [data.bestItem] : (data.proposal && data.proposal.bestItem ? [data.proposal.bestItem] : (allItems[0] ? [allItems[0]] : [])));
+      const best = bestItems[0];
 
-      // 1. RENDER "THE ONE BEST CHOICE" SPOTLIGHT HERO CARD
-      if (best && data.proposal) {
+      // 1. RENDER BEST CHOICES (MULTI-ITEM OR SINGLE ITEM SPOTLIGHT)
+      if (bestItems.length > 1 && data.proposal) {
+        const prop = data.proposal;
+        const total = (prop.totalAmountCents / 100).toFixed(2);
+        const isSwiggy = prop.platform === 'swiggy_instamart';
+        const platformColor = isSwiggy ? 'var(--swiggy)' : 'var(--zepto)';
+        const platformName = isSwiggy ? 'Swiggy Instamart' : 'Zepto';
+        const eta = prop.etaMinutes || (isSwiggy ? 14 : 10);
+
+        html += '<div class="best-choice-card" id="bestChoiceCard_' + data.sessionId + '">';
+        html += '<div class="best-choice-glow"></div>';
+        html += '<div class="best-choice-top-bar">';
+        html += '<div class="best-choice-badge">🏆 AGENT TOP CHOICES (' + bestItems.length + ' ITEMS)</div>';
+        html += '<span style="border: 1px solid ' + platformColor + '; color: ' + platformColor + '; background: rgba(0,0,0,0.3); font-size:11px; padding:3px 10px; border-radius:12px; font-weight:700; display:inline-flex; align-items:center; gap:6px;">';
+        html += '<span class="status-dot" style="background:' + platformColor + ';"></span> ' + platformName;
+        html += '</span>';
+        html += '<span class="eta-badge" style="background:rgba(59,130,246,0.15); color:#60a5fa; border:1px solid rgba(59,130,246,0.3); font-weight:700;">⚡ ' + eta + ' MINS DELIVERY</span>';
+        html += '</div>';
+
+        html += '<div style="display:flex; flex-direction:column; gap:10px; margin: 12px 0;">';
+        for (let i = 0; i < bestItems.length; i++) {
+          const item = bestItems[i];
+          const itemPrice = (item.priceCents / 100).toFixed(2);
+          const mrp = item.mrpCents ? (item.mrpCents / 100).toFixed(2) : null;
+          const discountPct = (item.mrpCents && item.priceCents && item.mrpCents > item.priceCents)
+            ? Math.round(((item.mrpCents - item.priceCents) / item.mrpCents) * 100)
+            : null;
+          const pUrl = item.productUrl || (isSwiggy
+            ? 'https://www.swiggy.com/instamart/search?query=' + encodeURIComponent(item.name)
+            : 'https://www.zeptonow.com/search?q=' + encodeURIComponent(item.name));
+          const isButter = item.name.toLowerCase().includes('butter');
+          const isEgg = item.name.toLowerCase().includes('egg');
+          const icon = isButter ? '🧈' : (isEgg ? '🥚' : (isSwiggy ? '🥫' : '⚡'));
+
+          html += '<div class="best-item-row" style="background:rgba(15,23,42,0.8); border:1px solid rgba(59,130,246,0.25); border-radius:12px; padding:12px 14px; display:flex; gap:14px; align-items:center;">';
+          html += '<div style="font-size:11px; font-weight:800; background:linear-gradient(135deg, #2563eb, #38bdf8); color:#fff; width:24px; height:24px; border-radius:50%; display:flex; align-items:center; justify-content:center; flex-shrink:0;">' + (i + 1) + '</div>';
+          html += '<div class="best-choice-img-box" style="width:56px; height:56px; flex-shrink:0; border-radius:8px;">';
+          if (item.imageUrl) {
+            html += '<img src="' + item.imageUrl + '" alt="' + escapeHtml(item.name) + '" style="width:100%; height:100%; object-fit:contain;">';
+          } else {
+            html += '<span style="font-size:26px;">' + icon + '</span>';
+          }
+          html += '</div>';
+
+          html += '<div style="flex:1; min-width:0;">';
+          html += '<div class="best-choice-brand" style="font-size:11px;">' + escapeHtml(item.brand || platformName) + '</div>';
+          html += '<div style="font-weight:700; font-size:14px; color:#f8fafc; white-space:nowrap; overflow:hidden; text-overflow:ellipsis;" title="' + escapeHtml(item.name) + '">' + escapeHtml(item.name) + '</div>';
+          if (item.unit) html += '<div style="font-size:11px; color:#94a3b8;">Size / Variant: <b>' + escapeHtml(item.unit) + '</b></div>';
+          if (item.isPriceVerified !== false) {
+            html += '<span class="verified-price-tag verified" style="font-size:9px; padding:1px 5px; margin-top:3px;">✓ Verified Live Price</span>';
+          } else {
+            html += '<span class="verified-price-tag unverified" style="font-size:9px; padding:1px 5px; margin-top:3px;">⚠️ Unverified</span>';
+          }
+          html += '</div>';
+
+          html += '<div style="text-align:right; flex-shrink:0;">';
+          html += '<div style="font-size:16px; font-weight:800; color:#38bdf8;">₹' + itemPrice + '</div>';
+          if (mrp && mrp !== itemPrice) html += '<div style="font-size:11px; color:#94a3b8; text-decoration:line-through;">₹' + mrp + '</div>';
+          if (discountPct) html += '<span class="discount-pill" style="font-size:9px; padding:1px 5px;">' + discountPct + '% OFF</span>';
+          html += '<div style="margin-top:4px;"><a href="' + pUrl + '" target="_blank" rel="noopener noreferrer" style="font-size:10px; color:#38bdf8; text-decoration:underline;">View ↗</a></div>';
+          html += '</div>';
+
+          html += '</div>'; // end best-item-row
+        }
+        html += '</div>';
+
+        html += '<div class="best-choice-reason" id="bestHeroReason_' + data.sessionId + '">';
+        html += '💡 <b>Why these are your best choices:</b> ' + escapeHtml(data.recommendationReason || 'Optimal combination of dark store availability, lowest price, and fastest guaranteed ETA for both requested items.');
+        html += '</div>';
+
+        // Cost breakdown card
+        const subtotalStr = ((prop.subtotalCents || prop.totalAmountCents) / 100).toFixed(2);
+        const delivStr = (prop.deliveryFeeCents && prop.deliveryFeeCents > 0)
+          ? ('₹' + (prop.deliveryFeeCents / 100).toFixed(2))
+          : '<span style="color:#10b981;">FREE</span>';
+        const handlingStr = ((prop.handlingFeeCents || 0) / 100).toFixed(2);
+        const taxStr = ((prop.taxesCents || 0) / 100).toFixed(2);
+        const discountStr = (prop.discountCents && prop.discountCents > 0)
+          ? ('-₹' + (prop.discountCents / 100).toFixed(2))
+          : null;
+
+        html += '<div class="fee-breakdown-card">';
+        html += '<div style="font-size:11px; text-transform:uppercase; color:#38bdf8; font-weight:700; margin-bottom:6px; display:flex; justify-content:space-between;">';
+        html += '<span>Order Cost Breakdown (' + bestItems.length + ' Items)</span>';
+        html += '<span style="font-size:10px; color:#94a3b8; font-weight:normal;">Estimated (Confirmed at Checkout)</span>';
+        html += '</div>';
+        html += '<div class="fee-row"><span>Items Subtotal:</span><span id="bestHeroSubtotal_' + data.sessionId + '">₹' + subtotalStr + '</span></div>';
+        html += '<div class="fee-row"><span>Delivery Fee:</span><span id="bestHeroDeliv_' + data.sessionId + '">' + delivStr + '</span></div>';
+        html += '<div class="fee-row"><span>Platform & Handling Fee:</span><span id="bestHeroHandling_' + data.sessionId + '">₹' + handlingStr + '</span></div>';
+        html += '<div class="fee-row"><span>Taxes & GST:</span><span id="bestHeroTaxes_' + data.sessionId + '">₹' + taxStr + '</span></div>';
+        if (discountStr) {
+          html += '<div class="fee-row" style="color:#10b981;"><span>Eligible Discounts:</span><span id="bestHeroDiscountAmt_' + data.sessionId + '">' + discountStr + '</span></div>';
+        }
+        html += '<div class="fee-row total-row"><span>Estimated Total Payable:</span><span id="bestHeroTotal_' + data.sessionId + '" style="color:#10b981; font-size:16px;">₹' + total + '</span></div>';
+        html += '</div>';
+
+        if (prop.budgetExceeded || prop.budgetSuggestion) {
+          const advisoryMsg = prop.budgetSuggestion ? prop.budgetSuggestion.text : ('Estimated total ₹' + total + ' exceeds remaining daily budget.');
+          html += '<div class="budget-alert-banner">';
+          html += '🛡️ <b>Daily Budget Advisory:</b> ' + escapeHtml(advisoryMsg);
+          html += '</div>';
+        }
+
+        // Bottom Breakdown & Biometric Authorization
+        html += '<div class="best-choice-footer">';
+        html += '<div class="proposal-breakdown" style="margin-bottom:10px;">';
+        const userDisplayName = activeUser ? activeUser.displayName : (data.user ? data.user.displayName : 'Guest (Sign Up Required)');
+        const userPin = activeUser ? (activeUser.defaultPincode || '') : (data.user ? data.user.pincode : '');
+        html += '<span>Delivering on behalf of: <b>' + escapeHtml(userDisplayName) + '</b>' + (userPin ? ' (' + escapeHtml(userPin) + ')' : '') + '</span>';
+        html += '<span style="font-size:13px; color:#94a3b8;">Est. Payable: <b style="color:#10b981; font-size:15px;">₹' + total + '</b></span>';
+        html += '</div>';
+
+        const hasUnverified = bestItems.some(it => it.isPriceVerified === false) || prop.isPriceVerified === false;
+        if (hasUnverified) {
+          html += '<button class="btn-passkey" style="background: rgba(239, 68, 68, 0.2); border: 1px solid rgba(239, 68, 68, 0.4); color: #f87171;" disabled>';
+          html += '⚠️ Checkout Blocked: Item price not verified by merchant integration';
+          html += '</button>';
+        } else if (prop.budgetExceeded) {
+          html += '<button class="btn-passkey" style="background: rgba(245, 158, 11, 0.2); border: 1px solid rgba(245, 158, 11, 0.4); color: #fbbf24;" disabled title="Daily spend limit exceeded">';
+          html += '⚠️ Cannot Authorize: Exceeds Daily Spend Limit (Adjust in Wallet or select cheaper alternative)';
+          html += '</button>';
+        } else if (activeUser && data.mandateBundle) {
+          const mandateId = data.mandateBundle.mandateId || '';
+          const challengeId = (data.mandateBundle.challenge && data.mandateBundle.challenge.challengeId) || '';
+          html += '<button class="btn-passkey" id="passkeyBtn_' + data.sessionId + '" data-session="' + data.sessionId + '" data-mandate="' + mandateId + '" data-challenge="' + challengeId + '" data-amount="' + prop.totalAmountCents + '" onclick="triggerPasskeyFromBtn(this)">';
+          html += '🔒 Authorize ₹' + total + ' for ' + bestItems.length + ' Items with Biometric Passkey';
+          html += '</button>';
+        } else if (!activeUser) {
+          html += '<button class="btn-passkey" style="background: linear-gradient(135deg, #059669 0%, #10b981 100%);" id="passkeyBtn_' + data.sessionId + '" onclick="openSignupModal()">';
+          html += '⚡ Sign Up with Clerk to Authorize Order (₹' + total + ')';
+          html += '</button>';
+        } else {
+          html += '<button class="btn-passkey" style="background: rgba(239, 68, 68, 0.2); border: 1px solid rgba(239, 68, 68, 0.4); color: #f87171;" disabled>';
+          html += '⚠️ ' + escapeHtml((data.turn && data.turn.error) || data.error || 'Authorization mandate unavailable');
+          html += '</button>';
+        }
+        html += '</div>'; // end best-choice-footer
+        html += '</div>'; // end best-choice-card
+      } else if (best && data.proposal) {
         const prop = data.proposal;
         const total = (prop.totalAmountCents / 100).toFixed(2);
         const itemPrice = ((best.priceCents || prop.totalAmountCents) / 100).toFixed(2);
@@ -2368,6 +2762,11 @@ function renderWebDashboard(): string {
         if (discountPct) {
           html += '<span class="discount-pill" id="bestHeroDiscount_' + data.sessionId + '">' + discountPct + '% OFF</span>';
         }
+        if (best.isPriceVerified) {
+          html += '<span class="verified-price-tag verified">✓ Verified Live Price</span>';
+        } else {
+          html += '<span class="verified-price-tag unverified">⚠️ Unverified Price</span>';
+        }
         html += '</div>';
 
         html += '<div class="best-choice-links-row">';
@@ -2380,6 +2779,39 @@ function renderWebDashboard(): string {
         html += '💡 <b>Why this is your best choice:</b> ' + escapeHtml(data.recommendationReason || 'Optimal combination of dark store availability, lowest price, and fastest guaranteed ETA.');
         html += '</div>';
 
+        // Complete cost breakdown card
+        const subtotalStr = ((prop.subtotalCents || best.priceCents || prop.totalAmountCents) / 100).toFixed(2);
+        const delivStr = (prop.deliveryFeeCents && prop.deliveryFeeCents > 0)
+          ? ('₹' + (prop.deliveryFeeCents / 100).toFixed(2))
+          : '<span style="color:#10b981;">FREE</span>';
+        const handlingStr = ((prop.handlingFeeCents || 0) / 100).toFixed(2);
+        const taxStr = ((prop.taxesCents || 0) / 100).toFixed(2);
+        const discountStr = (prop.discountCents && prop.discountCents > 0)
+          ? ('-₹' + (prop.discountCents / 100).toFixed(2))
+          : null;
+
+        html += '<div class="fee-breakdown-card">';
+        html += '<div style="font-size:11px; text-transform:uppercase; color:#38bdf8; font-weight:700; margin-bottom:6px; display:flex; justify-content:space-between;">';
+        html += '<span>Order Cost Breakdown</span>';
+        html += '<span style="font-size:10px; color:#94a3b8; font-weight:normal;">Estimated (Confirmed at Checkout)</span>';
+        html += '</div>';
+        html += '<div class="fee-row"><span>Items Subtotal:</span><span id="bestHeroSubtotal_' + data.sessionId + '">₹' + subtotalStr + '</span></div>';
+        html += '<div class="fee-row"><span>Delivery Fee:</span><span id="bestHeroDeliv_' + data.sessionId + '">' + delivStr + '</span></div>';
+        html += '<div class="fee-row"><span>Platform & Handling Fee:</span><span id="bestHeroHandling_' + data.sessionId + '">₹' + handlingStr + '</span></div>';
+        html += '<div class="fee-row"><span>Taxes & GST:</span><span id="bestHeroTaxes_' + data.sessionId + '">₹' + taxStr + '</span></div>';
+        if (discountStr) {
+          html += '<div class="fee-row" style="color:#10b981;"><span>Eligible Discounts:</span><span id="bestHeroDiscountAmt_' + data.sessionId + '">' + discountStr + '</span></div>';
+        }
+        html += '<div class="fee-row total-row"><span>Estimated Total Payable:</span><span id="bestHeroTotal_' + data.sessionId + '" style="color:#10b981; font-size:16px;">₹' + total + '</span></div>';
+        html += '</div>';
+
+        if (prop.budgetExceeded || prop.budgetSuggestion) {
+          const advisoryMsg = prop.budgetSuggestion ? prop.budgetSuggestion.text : ('Estimated total ₹' + total + ' exceeds remaining daily budget.');
+          html += '<div class="budget-alert-banner">';
+          html += '🛡️ <b>Daily Budget Advisory:</b> ' + escapeHtml(advisoryMsg);
+          html += '</div>';
+        }
+
         html += '</div>'; // end best-choice-info
         html += '</div>'; // end best-choice-body
 
@@ -2389,10 +2821,18 @@ function renderWebDashboard(): string {
         const userDisplayName = activeUser ? activeUser.displayName : (data.user ? data.user.displayName : 'Guest (Sign Up Required)');
         const userPin = activeUser ? (activeUser.defaultPincode || '') : (data.user ? data.user.pincode : '');
         html += '<span>Delivering on behalf of: <b>' + escapeHtml(userDisplayName) + '</b>' + (userPin ? ' (' + escapeHtml(userPin) + ')' : '') + '</span>';
-        html += '<span style="font-size:15px;">Total Payable: <b id="bestHeroTotal_' + data.sessionId + '" style="color:#10b981;">₹' + total + '</b></span>';
+        html += '<span style="font-size:13px; color:#94a3b8;">Est. Payable: <b style="color:#10b981; font-size:15px;">₹' + total + '</b></span>';
         html += '</div>';
 
-        if (activeUser && data.mandateBundle) {
+        if (best.isPriceVerified === false || prop.isPriceVerified === false) {
+          html += '<button class="btn-passkey" style="background: rgba(239, 68, 68, 0.2); border: 1px solid rgba(239, 68, 68, 0.4); color: #f87171;" disabled>';
+          html += '⚠️ Checkout Blocked: Item price not verified by merchant integration';
+          html += '</button>';
+        } else if (prop.budgetExceeded) {
+          html += '<button class="btn-passkey" style="background: rgba(245, 158, 11, 0.2); border: 1px solid rgba(245, 158, 11, 0.4); color: #fbbf24;" disabled title="Daily spend limit exceeded">';
+          html += '⚠️ Cannot Authorize: Exceeds Daily Spend Limit (Adjust in Wallet or select cheaper alternative)';
+          html += '</button>';
+        } else if (activeUser && data.mandateBundle) {
           const mandateId = data.mandateBundle.mandateId || '';
           const challengeId = (data.mandateBundle.challenge && data.mandateBundle.challenge.challengeId) || '';
           html += '<button class="btn-passkey" id="passkeyBtn_' + data.sessionId + '" data-session="' + data.sessionId + '" data-mandate="' + mandateId + '" data-challenge="' + challengeId + '" data-amount="' + prop.totalAmountCents + '" onclick="triggerPasskeyFromBtn(this)">';
@@ -2510,7 +2950,21 @@ function renderWebDashboard(): string {
       if (priceEl) priceEl.textContent = '₹' + priceStr;
       if (mrpEl) mrpEl.textContent = selected.mrpCents ? ('₹' + (selected.mrpCents / 100).toFixed(2)) : '';
       if (imgEl && selected.imageUrl) imgEl.src = selected.imageUrl;
-      if (totalEl) totalEl.textContent = '₹' + priceStr;
+
+      // Update breakdown fields accurately
+      const subEl = document.getElementById('bestHeroSubtotal_' + sessionId);
+      const delivEl = document.getElementById('bestHeroDeliv_' + sessionId);
+      const handEl = document.getElementById('bestHeroHandling_' + sessionId);
+      const delivFeeCents = isSwiggy ? (selected.priceCents >= 9900 ? 0 : 2500) : (selected.priceCents >= 9900 ? 0 : 2000);
+      const handFeeCents = isSwiggy ? 400 : 300;
+      const newTotalCents = selected.priceCents + delivFeeCents + handFeeCents;
+      const newTotalStr = (newTotalCents / 100).toFixed(2);
+
+      if (subEl) subEl.textContent = '₹' + priceStr;
+      if (delivEl) delivEl.innerHTML = delivFeeCents > 0 ? ('₹' + (delivFeeCents / 100).toFixed(2)) : '<span style="color:#10b981;">FREE</span>';
+      if (handEl) handEl.textContent = '₹' + (handFeeCents / 100).toFixed(2);
+      if (totalEl) totalEl.textContent = '₹' + newTotalStr;
+
       if (reasonEl) {
         reasonEl.innerHTML = '💡 <b>Selected by You:</b> Switched to <b>' + escapeHtml(selected.name) + '</b> from ' + platformName + ' with live dark store dispatch.';
       }
@@ -2519,8 +2973,8 @@ function renderWebDashboard(): string {
         linkEl.textContent = '🔗 View Product on ' + platformName + ' ↗';
       }
       if (passkeyBtn) {
-        passkeyBtn.setAttribute('data-amount', selected.priceCents);
-        passkeyBtn.innerHTML = '🔒 Authorize ₹' + priceStr + ' with Biometric Passkey (Touch ID / Face ID)';
+        passkeyBtn.setAttribute('data-amount', newTotalCents);
+        passkeyBtn.innerHTML = '🔒 Authorize ₹' + newTotalStr + ' with Biometric Passkey (Touch ID / Face ID)';
       }
 
       document.querySelectorAll('[id^="prodCard_' + sessionId + '_"]').forEach(function(card) {
@@ -2583,6 +3037,13 @@ function renderWebDashboard(): string {
 
           if (checkoutData.success) {
             renderOrderReceipt(checkoutData);
+            try {
+              const wRes = await fetch('/api/me/wallet');
+              if (wRes.ok) {
+                const wJson = await wRes.json();
+                setUserUI(wJson.user, wJson.remainingSpendINR);
+              }
+            } catch (_) {}
           } else {
             alert('Checkout failed: ' + (checkoutData.error || 'Unknown error'));
             if (checkoutData.requiresAuth || checkoutData.requiresSignup) {
@@ -2602,7 +3063,9 @@ function renderWebDashboard(): string {
       div.className = 'msg msg-agent';
 
       const order = data.order || {};
-      const total = ((order.totalAmountCents || 5400) / 100).toFixed(2);
+      const total = order.totalAmountCents !== undefined
+        ? (order.totalAmountCents / 100).toFixed(2)
+        : (data.totalChargedCents !== undefined ? (data.totalChargedCents / 100).toFixed(2) : '0.00');
       const recipient = data.orderedFor || activeUser;
 
       let html = '<div class="msg-avatar">⚡</div><div class="msg-bubble">';

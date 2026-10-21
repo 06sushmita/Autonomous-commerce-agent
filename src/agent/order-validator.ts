@@ -73,7 +73,31 @@ export class OrderValidator {
     dailySpendLimitCents: number = 500000,
     isLocationConfirmed: boolean = true
   ): PrePurchaseValidationResult {
-    // 1. Check dark-store item stock availability
+    // 1. Check verified merchant pricing
+    if (proposal.isPriceVerified === false) {
+      return {
+        valid: false,
+        budgetAllowed: false,
+        stockAvailable: true,
+        locationConfirmed: isLocationConfirmed,
+        remainingDailySpendCents: 0,
+        errorMessage: `Unverified merchant price: Products from ${proposal.merchantName} do not have verified live prices from the authorized merchant integration. Automatic checkout is disabled.`,
+      };
+    }
+
+    const unverifiedItems = proposal.items.filter((it) => it.isPriceVerified === false || !it.unitPriceCents);
+    if (unverifiedItems.length > 0) {
+      return {
+        valid: false,
+        budgetAllowed: false,
+        stockAvailable: true,
+        locationConfirmed: isLocationConfirmed,
+        remainingDailySpendCents: 0,
+        errorMessage: `Unverified merchant price for item(s): ${unverifiedItems.map((i) => i.name).join(', ')}. Automatic checkout is disabled.`,
+      };
+    }
+
+    // 2. Check dark-store item stock availability
     if (proposal.isAvailable === false || (proposal.unavailableItems && proposal.unavailableItems.length > 0)) {
       return {
         valid: false,
@@ -85,7 +109,7 @@ export class OrderValidator {
       };
     }
 
-    // 2. Check delivery location confirmation
+    // 3. Check delivery location confirmation
     if (!isLocationConfirmed) {
       return {
         valid: false,
@@ -97,7 +121,7 @@ export class OrderValidator {
       };
     }
 
-    // 3. Enforce spending limits
+    // 4. Enforce authoritative daily budget limit
     const spendCheck = spendTracker.validateSpendLimit(
       userId,
       proposal.totalAmountCents,
@@ -105,6 +129,8 @@ export class OrderValidator {
     );
 
     if (!spendCheck.allowed) {
+      proposal.budgetExceeded = true;
+      proposal.excessAmountCents = proposal.totalAmountCents - spendCheck.remainingDailyCents;
       return {
         valid: false,
         budgetAllowed: false,

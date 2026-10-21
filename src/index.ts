@@ -10,6 +10,7 @@ export * from './mcp/swiggy-client.js';
 export * from './mcp/zepto-mcp.js';
 export * from './mcp/zepto-client.js';
 export * from './mcp/mcp-manager.js';
+export * from './mcp/geocoder.js';
 
 export * from './db/index.js';
 

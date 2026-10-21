@@ -8,6 +8,13 @@
       "when": 1792261234853,
       "tag": "0000_redundant_jack_power",
       "breakpoints": true
+    },
+    {
+      "idx": 1,
+      "version": "7",
+      "when": 1792569875052,
+      "tag": "0001_gifted_ultimo",
+      "breakpoints": true
     }
   ]
 }

@@ -36,9 +36,17 @@ export const sessionStatusEnum = pgEnum('session_status', [
   'abandoned',
 ]);
 
+export const budgetReservationStatusEnum = pgEnum('budget_reservation_status', [
+  'active',
+  'committed',
+  'released',
+  'expired',
+]);
+
 export type MandateStatus = (typeof mandateStatusEnum.enumValues)[number];
 export type TransactionStatus = (typeof transactionStatusEnum.enumValues)[number];
 export type SessionStatus = (typeof sessionStatusEnum.enumValues)[number];
+export type BudgetReservationStatus = (typeof budgetReservationStatusEnum.enumValues)[number];
 
 // 1. Users Table with Delivery Location and Daily Spend Limit (₹5,000.00 default = 500,000 paise)
 export const users = pgTable('users', {
@@ -196,3 +204,26 @@ export type NewAuditLogEntry = typeof auditLog.$inferInsert;
 
 export type ProductEmbedding = typeof productEmbeddings.$inferSelect;
 export type NewProductEmbedding = typeof productEmbeddings.$inferInsert;
+
+// 9. Budget Reservations Table (Authoritative Backend Daily Budget Reservations)
+export const budgetReservations = pgTable('budget_reservations', {
+  id: uuid('id').defaultRandom().primaryKey(),
+  reservationId: text('reservation_id').notNull().unique(),
+  userId: uuid('user_id').notNull().references(() => users.id, { onDelete: 'cascade' }),
+  mandateId: text('mandate_id').notNull(),
+  amountCents: integer('amount_cents').notNull(),
+  currency: text('currency').notNull().default('INR'),
+  status: budgetReservationStatusEnum('status').notNull().default('active'),
+  expiresAt: timestamp('expires_at', { withTimezone: true }).notNull(),
+  committedAt: timestamp('committed_at', { withTimezone: true }),
+  releasedAt: timestamp('released_at', { withTimezone: true }),
+  releaseReason: text('release_reason'),
+  createdAt: timestamp('created_at', { withTimezone: true }).notNull().defaultNow(),
+  updatedAt: timestamp('updated_at', { withTimezone: true }).notNull().defaultNow(),
+}, (table) => [
+  index('idx_budget_reservations_user_status').on(table.userId, table.status, table.expiresAt),
+  uniqueIndex('idx_budget_reservations_mandate').on(table.mandateId),
+]);
+
+export type BudgetReservation = typeof budgetReservations.$inferSelect;
+export type NewBudgetReservation = typeof budgetReservations.$inferInsert;

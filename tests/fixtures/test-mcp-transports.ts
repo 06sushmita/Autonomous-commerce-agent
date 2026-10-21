@@ -40,8 +40,28 @@ export function createTestSwiggyTransport(): MockMcpTransport {
         inStock: true,
         unit: '100 g',
       },
+      {
+        id: 'swiggy_im_suguna_eggs_6',
+        platform: 'swiggy_instamart',
+        merchantName: 'Swiggy Instamart',
+        name: 'Suguna Farm Fresh White Eggs',
+        category: 'Dairy & Eggs',
+        priceCents: 5200,
+        currency: 'INR',
+        inStock: true,
+        unit: '6 pcs',
+      },
     ];
-    return { items: items.filter((i) => i.name.toLowerCase().includes(q) || q.includes('milk') && i.name.includes('Milk') || q.includes('bread') && i.name.includes('Bread')) };
+    return {
+      items: items.filter(
+        (i) =>
+          i.name.toLowerCase().includes(q) ||
+          (q.includes('milk') && i.name.includes('Milk')) ||
+          (q.includes('bread') && i.name.includes('Bread')) ||
+          (q.includes('butter') && i.name.includes('Butter')) ||
+          (q.includes('egg') && i.name.includes('Egg'))
+      ),
+    };
   });
 
   transport.registerToolHandler('swiggy_im_get_item_details', async (args) => {
@@ -82,7 +102,13 @@ export function createTestSwiggyTransport(): MockMcpTransport {
     const items = args.items || [];
     let subtotalCents = 0;
     const basketItems = items.map((it: any) => {
-      const price = it.itemId.includes('butter') ? 5800 : (it.itemId.includes('bread') ? 5000 : 4200);
+      const price = it.itemId.includes('butter')
+        ? 5800
+        : it.itemId.includes('bread')
+        ? 5000
+        : it.itemId.includes('egg')
+        ? 5200
+        : 4200;
       subtotalCents += price * it.quantity;
       return {
         itemId: it.itemId,
@@ -178,7 +204,16 @@ export function createTestZeptoTransport(): MockMcpTransport {
         unit: '100 g',
       },
     ];
-    return { items: items.filter((i) => i.name.toLowerCase().includes(q) || q.includes('bread') && i.name.includes('Bread') || q.includes('milk') && i.name.includes('Milk')) };
+    return {
+      items: items.filter(
+        (i) =>
+          i.name.toLowerCase().includes(q) ||
+          (q.includes('bread') && i.name.includes('Bread')) ||
+          (q.includes('milk') && i.name.includes('Milk')) ||
+          (q.includes('butter') && i.name.includes('Butter')) ||
+          (q.includes('egg') && i.name.includes('Egg'))
+      ),
+    };
   });
 
   transport.registerToolHandler('zepto_inventory_check', async (args: any) => {

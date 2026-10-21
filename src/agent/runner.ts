@@ -160,7 +160,7 @@ export class AutonomousCommerceRunner {
       throw new Error(`Session not found: ${sessionId}`);
     }
 
-    // 1. Handle location confirmation or update
+    // 1. Handle location confirmation or sync with user's current delivery location
     if (locationConfirmation) {
       const locCheck = orderValidator.validateLocation(
         session.activeDeliveryLocation,
@@ -168,6 +168,17 @@ export class AutonomousCommerceRunner {
       );
       session.activeDeliveryLocation = locCheck.location;
       session.isLocationConfirmed = locationConfirmation.confirmed;
+    } else if (
+      session.user.defaultAddress &&
+      (session.user.defaultAddress !== session.activeDeliveryLocation.address ||
+       session.user.defaultPincode !== session.activeDeliveryLocation.pincode)
+    ) {
+      session.activeDeliveryLocation = {
+        address: session.user.defaultAddress,
+        pincode: session.user.defaultPincode,
+        latitude: session.user.defaultLatitude,
+        longitude: session.user.defaultLongitude,
+      };
     }
 
     // 2. Parse natural language shopping query into grocery items
@@ -203,6 +214,38 @@ export class AutonomousCommerceRunner {
     );
 
     if (!validation.valid) {
+      if (!validation.budgetAllowed) {
+        // Step 5: Budget-aware item selection
+        const altProposal = bestProposal.platform === 'swiggy_instamart'
+          ? comparison.zeptoProposal
+          : comparison.swiggyProposal;
+
+        const remainingBudget = validation.remainingDailySpendCents;
+        const excessCents = bestProposal.totalAmountCents - remainingBudget;
+        bestProposal.budgetExceeded = true;
+        bestProposal.excessAmountCents = excessCents;
+
+        if (altProposal && altProposal.isAvailable && altProposal.totalAmountCents <= remainingBudget) {
+          const altMerchant = altProposal.merchantName;
+          const excessStr = (excessCents / 100).toFixed(2);
+          const altTotalStr = (altProposal.totalAmountCents / 100).toFixed(2);
+          const diffStr = ((bestProposal.totalAmountCents - altProposal.totalAmountCents) / 100).toFixed(2);
+
+          const suggestionText = `The requested basket from ${bestProposal.merchantName} (₹${(bestProposal.totalAmountCents / 100).toFixed(2)}) exceeds your remaining daily budget of ₹${(remainingBudget / 100).toFixed(2)} by ₹${excessStr}. However, an equivalent complete basket is available on ${altMerchant} for ₹${altTotalStr} (saving ₹${diffStr}), which fits within your budget. Explicit approval is required to change merchants.`;
+
+          bestProposal.budgetSuggestion = {
+            text: suggestionText,
+            alternativeProposal: altProposal,
+            requiredApproval: `Switch to ${altMerchant} to fit within daily budget`,
+          };
+        } else {
+          const excessStr = (excessCents / 100).toFixed(2);
+          bestProposal.budgetSuggestion = {
+            text: `The requested order total of ₹${(bestProposal.totalAmountCents / 100).toFixed(2)} exceeds your remaining daily budget of ₹${(remainingBudget / 100).toFixed(2)} by ₹${excessStr}. No equivalent basket fits within the remaining limit. You can increase your daily wallet limit or approve a change in items/quantities.`,
+          };
+        }
+      }
+
       return {
         sessionId,
         proposal: bestProposal,
@@ -341,14 +384,15 @@ export class AutonomousCommerceRunner {
       throw new Error('Biometric approval window has expired (10-minute limit). Please request a fresh proposal.');
     }
 
-    // 4. Reserve budget atomically before any external calls
-    const spendReservation = spendTracker.reserveSpend(
+    // 4. Revalidate budget immediately before payment authorization and reserve atomically
+    const spendReservation = await spendTracker.reserveSpendAsync(
       session.user.id,
       bundle.amountCents,
       mandateId,
       session.user.dailySpendLimitCents
     );
     if (!spendReservation.allowed) {
+      this.inFlightClaims.delete(mandateId);
       throw new Error(spendReservation.reason || 'Daily spend limit exceeded.');
     }
 
@@ -373,7 +417,7 @@ export class AutonomousCommerceRunner {
       }
     } catch (authErr: any) {
       this.inFlightClaims.delete(mandateId);
-      spendTracker.releaseReservation(mandateId);
+      await spendTracker.releaseReservationAsync(mandateId, 'prava_passkey_failed');
       throw authErr;
     }
 
@@ -388,13 +432,13 @@ export class AutonomousCommerceRunner {
       );
     } catch (checkoutErr: any) {
       this.inFlightClaims.delete(mandateId);
-      spendTracker.releaseReservation(mandateId);
+      await spendTracker.releaseReservationAsync(mandateId, 'merchant_checkout_failed');
       throw checkoutErr;
     }
 
     if (!checkoutResult.success) {
       this.inFlightClaims.delete(mandateId);
-      spendTracker.releaseReservation(mandateId);
+      await spendTracker.releaseReservationAsync(mandateId, 'merchant_checkout_unsuccessful');
       throw new Error(`Checkout failed at merchant ${platform}`);
     }
 
@@ -423,8 +467,20 @@ export class AutonomousCommerceRunner {
       });
     }
 
-    // Commit spend reservation permanently
-    spendTracker.commitReservation(mandateId, session.user.id, bundle.amountCents);
+    // Commit spend reservation permanently in memory and database
+    await spendTracker.commitReservationAsync(
+      mandateId,
+      session.user.id,
+      bundle.amountCents,
+      {
+        sessionId: session.sessionId,
+        merchantId: bundle.merchantId,
+        merchantOrderId: checkoutResult.orderId,
+        pravaTokenRef: tokenResponse.pravaTokenRef,
+        idempotencyKey,
+        receiptSummary: checkoutResult.receiptSummary,
+      }
+    );
 
     // Persist consumption to database if available
     if (db) {
@@ -432,6 +488,33 @@ export class AutonomousCommerceRunner {
         .set({ status: 'consumed', consumedAt: new Date() })
         .where(eq(schemaMandates.mandateId, mandateId))
         .catch((dbErr) => console.warn('DB mandate update note:', dbErr.message));
+
+      const isUuid = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(session.user.id);
+      if (isUuid) {
+        db.query.mandates
+          .findFirst({
+            where: eq(schemaMandates.mandateId, mandateId),
+          })
+          .then(async (dbMandate) => {
+            if (dbMandate) {
+              await db.insert(schemaTransactions).values({
+                userId: session.user.id as any,
+                sessionId: session.sessionId as any,
+                mandateId: dbMandate.id,
+                idempotencyKey: idempotencyKey || null,
+                pravaTokenRef: tokenResponse.pravaTokenRef,
+                merchantId: bundle.merchantId,
+                merchantOrderId: checkoutResult.orderId || null,
+                amountCents: bundle.amountCents,
+                currency: bundle.currency || 'INR',
+                status: 'completed',
+                receiptSummary: checkoutResult.receiptSummary || {},
+                completedAt: new Date(),
+              });
+            }
+          })
+          .catch((txErr) => console.warn('Note: DB tx insert:', txErr.message));
+      }
     }
 
     session.consumedMandateId = mandateId;
@@ -443,11 +526,12 @@ export class AutonomousCommerceRunner {
   /**
    * Helper to parse natural language shopping prompt into grocery items
    */
-  private parseQueryToGroceryItems(query: string): Array<{ name: string; quantity: number }> {
+  public parseQueryToGroceryItems(query: string): Array<{ name: string; quantity: number }> {
     const items: Array<{ name: string; quantity: number }> = [];
 
-    // 1. Strip conversational lead-ins and trailing delivery/time/merchant constraints
+    // 1. Strip conversational lead-ins, follow-up instructions, and trailing constraints
     let clean = query
+      .replace(/(?:[\r\n]+|\.\s+)(?:if\s+i\s+(?:am\s+)?asking|please\s+(?:show|give|make|pick)|make\s+sure|i\s+want\s+best|give\s+me\s+best).+$/is, '')
       .replace(/^(?:find|search|get|order|buy|show|look for|fetch|i want|please get me|bring me)\s+(?:me\s+)?/i, '')
       .replace(/\s+(?:in under \d+ mins?|in \d+ mins?|under \d+ mins?|fast|urgent|quickly|asap|from swiggy|from zepto|near me)\.?$/i, '')
       .trim();

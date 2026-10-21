@@ -153,6 +153,10 @@ export class AuthProvider {
     if (user.phone) this.users.set(user.phone, user);
   }
 
+  public getUser(userId: string): AuthUser | undefined {
+    return this.users.get(userId);
+  }
+
   public listUsers(): AuthUser[] {
     const unique = new Set<string>();
     const list: AuthUser[] = [];

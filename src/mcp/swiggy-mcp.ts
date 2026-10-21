@@ -14,6 +14,7 @@ import {
   DeliveryLocation,
   QuickCommerceBasketProposal,
   QuickCommerceItem,
+  QuickCommerceBasketItem,
   OrderCheckoutResult,
   ItemDetails,
   DeliveryEstimateResult,
@@ -40,6 +41,7 @@ export class SwiggyMcpClient {
   }
 
   private cachedAddressId: string | null = null;
+  private addressIdByPincode: Map<string, string> = new Map();
 
   public async initialize(): Promise<void> {
     this.endpoint = process.env.SWIGGY_MCP_URL || this.endpoint || 'https://mcp.swiggy.com/im';
@@ -70,20 +72,92 @@ export class SwiggyMcpClient {
     }
   }
 
-  public async resolveAddressId(): Promise<string> {
-    if (this.cachedAddressId) return this.cachedAddressId;
+  public async resolveAddressId(location?: DeliveryLocation): Promise<string> {
+    if (process.env.NODE_ENV === 'test') {
+      return 'test_swiggy_addr_id';
+    }
+
+    const pin = location?.pincode?.trim();
+    if (pin && this.addressIdByPincode.has(pin)) {
+      return this.addressIdByPincode.get(pin)!;
+    }
+
     if (this.transport && this.transport.isConnected()) {
       try {
         const addrRes = await this.transport.callTool<any>('get_addresses', {});
-        const addrs = addrRes?.structuredContent?.addresses || [];
-        if (addrs.length > 0 && addrs[0].id) {
-          this.cachedAddressId = addrs[0].id;
-          return this.cachedAddressId!;
+        const addrs: any[] = addrRes?.structuredContent?.addresses || [];
+
+        // 1. Check if any existing saved address matches the target pincode or address text
+        if (pin && addrs.length > 0) {
+          const matched = addrs.find((a) => {
+            const line = (a.addressLine || '').toLowerCase();
+            return (
+              line.includes(pin) ||
+              (location?.address && line.includes(location.address.toLowerCase().slice(0, 25))) ||
+              (location?.city && line.includes(location.city.toLowerCase()))
+            );
+          });
+          if (matched && matched.id) {
+            this.addressIdByPincode.set(pin, matched.id);
+            return matched.id;
+          }
         }
-      } catch {}
+
+        // 2. If no matching address exists on Swiggy and location is provided, dynamically create it on Swiggy
+        if (location && location.address && pin) {
+          try {
+            const city =
+              location.city ||
+              (location.address.split(',').slice(-2, -1)[0]?.trim() || 'City');
+
+            const createRes = await this.transport.callTool<any>('create_address', {
+              fullAddress: location.address,
+              addressLine: location.address.slice(0, 50),
+              addressLine2: location.address.length > 50 ? location.address.slice(50, 100) : city,
+              city,
+              postalCode: pin,
+              addressCategory: 'OTHER',
+              addressTag: 'ACA Delivery Address',
+              userName: 'Commerce User',
+              userPhone: '9820002845',
+              latitude: location.latitude,
+              longitude: location.longitude,
+            });
+
+            const newId = createRes?.structuredContent?.addressId;
+            if (newId) {
+              const refreshRes = await this.transport.callTool<any>('get_addresses', {});
+              const refreshedAddrs: any[] = refreshRes?.structuredContent?.addresses || [];
+              const newlyCreated = refreshedAddrs.find(
+                (a) => a.id.startsWith(newId) || (a.addressLine && a.addressLine.includes(pin))
+              );
+              const effectiveId = newlyCreated ? newlyCreated.id : newId;
+              this.addressIdByPincode.set(pin, effectiveId);
+              return effectiveId;
+            }
+          } catch (createErr: any) {
+            console.warn('[Swiggy MCP] Could not dynamically create address on Swiggy:', createErr.message);
+          }
+        }
+
+        // If no location was specified (e.g. system status check), return default saved address
+        if (!location && addrs.length > 0 && addrs[0].id) {
+          return addrs[0].id;
+        }
+      } catch (err: any) {
+        console.warn('[Swiggy MCP] resolveAddressId note:', err.message);
+      }
     }
-    this.cachedAddressId = 'd82m443k649i1ha7jl1g__ASU5hwRbGdogCwdOI6ZQJg';
-    return this.cachedAddressId;
+
+    // STRICT: Do not silently fall back to an arbitrary hardcoded location if user specified an address
+    if (location && location.address) {
+      throw new Error(
+        `Swiggy Instamart cannot fulfill at specified address: "${location.address} (${location.pincode})". Address fallback is disabled.`
+      );
+    }
+
+    if (this.cachedAddressId) return this.cachedAddressId;
+    throw new Error('No delivery address specified. Please provide a delivery address and pincode.');
   }
 
   public getTransport(): IMcpTransportAdapter | null {
@@ -104,11 +178,17 @@ export class SwiggyMcpClient {
           query,
           location,
         });
-        return response?.items || [];
+        const rawItems = response?.items || [];
+        return rawItems.map((it) => ({
+          ...it,
+          isPriceVerified: it.isPriceVerified !== undefined ? it.isPriceVerified : (typeof it.priceCents === 'number' && it.priceCents > 0),
+          priceSource: it.priceSource || (typeof it.priceCents === 'number' && it.priceCents > 0 ? ('mcp_live' as const) : ('unavailable' as const)),
+          priceFetchedAt: it.priceFetchedAt || new Date().toISOString(),
+        }));
       }
 
       try {
-        const addressId = await this.resolveAddressId();
+        const addressId = await this.resolveAddressId(location);
         const response = await this.transport.callTool<any>('search_products', {
           query,
           addressId,
@@ -120,8 +200,13 @@ export class SwiggyMcpClient {
         if (rawProducts.length > 0) {
           return rawProducts.map((p) => {
             const v = p.variations?.[0];
-            const offerPrice = v?.price?.offerPrice ?? v?.price?.mrp ?? 20;
-            const mrp = v?.price?.mrp ?? offerPrice;
+            const rawOfferPrice = v?.price?.offerPrice;
+            const rawMrp = v?.price?.mrp;
+            const hasOffer = typeof rawOfferPrice === 'number' && rawOfferPrice > 0;
+            const hasMrp = typeof rawMrp === 'number' && rawMrp > 0;
+            const offerPrice = hasOffer ? rawOfferPrice : (hasMrp ? rawMrp : 0);
+            const mrp = hasMrp ? rawMrp : offerPrice;
+            const isVerified = offerPrice > 0;
             const slaVal = parseInt(v?.sla?.value || '20', 10);
             return {
               id: v?.spinId || p.productId || `swiggy_${p.displayName}`,
@@ -132,18 +217,23 @@ export class SwiggyMcpClient {
               priceCents: Math.round(offerPrice * 100),
               mrpCents: Math.round(mrp * 100),
               currency: 'INR' as const,
-              inStock: v ? v.isInStockAndAvailable !== false : true,
+              inStock: isVerified && (v ? v.isInStockAndAvailable !== false : true),
               quantityAvailable: v?.maxQuantity || 20,
               unit: v?.quantityDescription,
+              packSize: v?.quantityDescription,
               imageUrl: v?.imageUrl,
               productUrl: `https://www.swiggy.com/instamart/search?query=${encodeURIComponent(v?.displayName || p.displayName)}`,
               etaMinutes: isNaN(slaVal) ? 20 : slaVal,
               category: 'Groceries',
+              isPriceVerified: isVerified,
+              priceSource: isVerified ? ('mcp_live' as const) : ('unavailable' as const),
+              priceFetchedAt: new Date().toISOString(),
             };
           });
         }
+        return [];
       } catch (err: any) {
-        // Fall back to live network catalog
+        throw new Error(`Swiggy Instamart live search failed: ${err.message || 'Unknown error'}`);
       }
     }
 
@@ -153,8 +243,7 @@ export class SwiggyMcpClient {
       );
     }
 
-    const { RealtimeCommerceFetcher } = await import('./realtime-search.js');
-    return await RealtimeCommerceFetcher.searchLiveItems(query, 'swiggy_instamart', location);
+    return [];
   }
 
   /**
@@ -176,18 +265,30 @@ export class SwiggyMcpClient {
         const p = response?.structuredContent?.products?.[0];
         if (p) {
           const v = p.variations?.[0];
+          const rawOffer = v?.price?.offerPrice;
+          const rawMrp = v?.price?.mrp;
+          const hasOffer = typeof rawOffer === 'number' && rawOffer > 0;
+          const hasMrp = typeof rawMrp === 'number' && rawMrp > 0;
+          const offerPrice = hasOffer ? rawOffer : (hasMrp ? rawMrp : 0);
+          const mrp = hasMrp ? rawMrp : offerPrice;
+          const isVerified = offerPrice > 0;
           return {
             id: v?.spinId || p.productId || itemId,
             platform: 'swiggy_instamart',
             merchantName: 'Swiggy Instamart',
             name: v?.displayName || p.displayName,
             category: 'Groceries',
-            priceCents: Math.round((v?.price?.offerPrice || 20) * 100),
+            priceCents: Math.round(offerPrice * 100),
+            mrpCents: Math.round(mrp * 100),
             currency: 'INR',
-            inStock: v ? v.isInStockAndAvailable !== false : true,
+            inStock: isVerified && (v ? v.isInStockAndAvailable !== false : true),
             quantityAvailable: v?.maxQuantity || 20,
             unit: v?.quantityDescription,
-            brand: p.brand || v?.brandName,
+            packSize: v?.quantityDescription,
+            brand: p.brand || v?.brandName || 'Swiggy Fresh',
+            isPriceVerified: isVerified,
+            priceSource: isVerified ? 'mcp_live' : 'unavailable',
+            priceFetchedAt: new Date().toISOString(),
           };
         }
       } catch {}
@@ -240,7 +341,7 @@ export class SwiggyMcpClient {
         return proposal;
       }
 
-      const addressId = await this.resolveAddressId();
+      const addressId = await this.resolveAddressId(location);
       try {
         const swiggyItems = items.map((i) => ({
           spinId: i.itemId.replace(/^swiggy_/, ''),
@@ -253,51 +354,82 @@ export class SwiggyMcpClient {
 
         const sc = updateRes?.structuredContent;
         if (sc) {
-          const totalStr = sc.cartTotalAmount || '₹54';
-          const totalVal = parseFloat(totalStr.replace(/[^0-9.]/g, '')) || 54;
+          const totalStr = sc.cartTotalAmount || '';
+          const parsedTotal = parseFloat(totalStr.replace(/[^0-9.]/g, ''));
           const cartId = sc.cartId || `cart_${Date.now()}`;
-          const itemTotal = Math.round(
-            (parseFloat(sc.billBreakdown?.lineItems?.find((l: any) => l.label.includes('Item Total'))?.value.replace(/[^0-9.]/g, '') || '16')) * 100
-          );
-          const delFee = Math.round(
-            (parseFloat(sc.billBreakdown?.lineItems?.find((l: any) => l.label.includes('Delivery'))?.value.replace(/[^0-9.]/g, '') || '35')) * 100
-          );
-          const taxes = Math.round(
-            (parseFloat(sc.billBreakdown?.lineItems?.find((l: any) => l.label.includes('Handling'))?.value.replace(/[^0-9.]/g, '') || '3')) * 100
-          );
+          const itemTotalLine = sc.billBreakdown?.lineItems?.find((l: any) => l.label.toLowerCase().includes('item total'));
+          const delFeeLine = sc.billBreakdown?.lineItems?.find((l: any) => l.label.toLowerCase().includes('delivery'));
+          const handlingLine = sc.billBreakdown?.lineItems?.find((l: any) => l.label.toLowerCase().includes('handling') || l.label.toLowerCase().includes('platform'));
+          const discountLine = sc.billBreakdown?.lineItems?.find((l: any) => l.label.toLowerCase().includes('discount') || l.label.toLowerCase().includes('coupon'));
+
+          const itemTotal = itemTotalLine ? Math.round(parseFloat(itemTotalLine.value.replace(/[^0-9.]/g, '')) * 100) : 0;
+          const delFee = delFeeLine ? Math.round(parseFloat(delFeeLine.value.replace(/[^0-9.]/g, '')) * 100) : 0;
+          const handlingFee = handlingLine ? Math.round(parseFloat(handlingLine.value.replace(/[^0-9.]/g, '')) * 100) : 0;
+          const discount = discountLine ? Math.round(parseFloat(discountLine.value.replace(/[^0-9.]/g, '')) * 100) : 0;
+
+          const basketItems: QuickCommerceBasketItem[] = (sc.items || []).map((it: any) => {
+            const rawPrice = it.discountedFinalPrice ?? it.mrp;
+            const price = typeof rawPrice === 'number' && rawPrice > 0 ? rawPrice : 0;
+            const priceCents = Math.round(price * 100);
+            const isVerified = priceCents > 0;
+            return {
+              id: it.spinId || it.productId,
+              itemId: it.spinId || it.productId,
+              platform: 'swiggy_instamart' as const,
+              merchantName: 'Swiggy Instamart',
+              name: it.itemName,
+              brand: it.brand || 'Swiggy Instamart',
+              priceCents,
+              unitPriceCents: priceCents,
+              mrpCents: typeof it.mrp === 'number' ? Math.round(it.mrp * 100) : priceCents,
+              inStock: isVerified && it.isInStockAndAvailable !== false,
+              quantityAvailable: it.maxQuantity || 20,
+              quantity: it.quantity || 1,
+              unit: it.itemVariant,
+              packSize: it.itemVariant,
+              imageUrl: it.imageUrl,
+              productUrl: `https://www.swiggy.com/instamart/search?query=${encodeURIComponent(it.itemName)}`,
+              isPriceVerified: isVerified,
+              priceSource: isVerified ? ('mcp_live' as const) : ('unavailable' as const),
+              priceFetchedAt: new Date().toISOString(),
+            };
+          });
+
+          const calculatedSubtotal = basketItems.reduce((acc, it) => acc + it.unitPriceCents * it.quantity, 0);
+          const effectiveSubtotal = itemTotal > 0 ? itemTotal : calculatedSubtotal;
+          const taxes = Math.round(effectiveSubtotal * 0.05);
+          const computedTotal = !isNaN(parsedTotal) && parsedTotal > 0
+            ? Math.round(parsedTotal * 100)
+            : effectiveSubtotal + delFee + handlingFee + taxes - discount;
+
+          const hasUnverified = basketItems.some((it) => !it.isPriceVerified);
+
           const proposal: QuickCommerceBasketProposal = {
             cartId,
             platform: 'swiggy_instamart',
             merchantName: 'Swiggy Instamart',
-            isAvailable: true,
-            items: (sc.items || []).map((it: any) => ({
-              id: it.spinId || it.productId,
-              platform: 'swiggy_instamart',
-              merchantName: 'Swiggy Instamart',
-              name: it.itemName,
-              brand: 'Swiggy Instamart',
-              priceCents: Math.round((it.discountedFinalPrice || it.mrp || 20) * 100),
-              inStock: it.isInStockAndAvailable !== false,
-              quantityAvailable: it.maxQuantity || 20,
-              unit: it.itemVariant,
-              imageUrl: it.imageUrl,
-              productUrl: `https://www.swiggy.com/instamart/search?query=${encodeURIComponent(it.itemName)}`,
-              etaMinutes: 20,
-              category: 'Groceries',
-            })),
-            subtotalCents: itemTotal,
-            itemTotalCents: itemTotal,
+            isAvailable: !hasUnverified,
+            items: basketItems,
+            subtotalCents: effectiveSubtotal,
+            itemTotalCents: effectiveSubtotal,
             deliveryFeeCents: delFee,
+            handlingFeeCents: handlingFee,
+            platformFeeCents: handlingFee,
+            discountCents: discount,
             surgeFeeCents: 0,
             taxCents: taxes,
             taxesCents: taxes,
-            totalAmountCents: Math.round(totalVal * 100),
+            totalAmountCents: computedTotal,
             currency: 'INR',
             etaMinutes: 20,
             deliveryAddress: location,
-            darkStoreName: 'Swiggy Instamart Pod (Dombivli)',
+            darkStoreName: 'Swiggy Instamart Live Pod',
             rainSurgeActive: false,
             freeDeliveryThresholdCents: 19900,
+            isPriceVerified: !hasUnverified,
+            priceSource: hasUnverified ? 'unavailable' : 'merchant_confirmed',
+            priceFreshness: new Date().toISOString(),
+            isEstimate: false,
           };
           this.carts.set(cartId, proposal);
           return proposal;
@@ -305,37 +437,87 @@ export class SwiggyMcpClient {
       } catch (err: any) {}
     }
 
-    // Direct calculated basket proposal
+    // Direct verified basket assembly using verified item prices
     const cartId = `swiggy_cart_${Date.now()}`;
-    const subtotal = items.length * 2500;
-    const delFee = subtotal > 19900 ? 0 : 2500;
-    const taxes = Math.round(subtotal * 0.05);
+    const basketItems: QuickCommerceBasketItem[] = [];
+    const unavailableItems: string[] = [];
+    let subtotalCents = 0;
+
+    for (const item of items) {
+      let verifiedItem: QuickCommerceItem | null = null;
+      try {
+        const details = await this.getItemDetails(item.itemId);
+        if (details && details.isPriceVerified && details.priceCents > 0) {
+          verifiedItem = details;
+        }
+      } catch {}
+
+      if (!verifiedItem || !verifiedItem.priceCents) {
+        unavailableItems.push(item.itemId);
+        basketItems.push({
+          itemId: item.itemId,
+          name: item.itemId,
+          quantity: item.quantity || 1,
+          unitPriceCents: 0,
+          isPriceVerified: false,
+          priceSource: 'unavailable',
+        });
+      } else {
+        const itemPrice = verifiedItem.priceCents;
+        subtotalCents += itemPrice * (item.quantity || 1);
+        basketItems.push({
+          id: verifiedItem.id,
+          itemId: verifiedItem.id,
+          name: verifiedItem.name,
+          quantity: item.quantity || 1,
+          unitPriceCents: itemPrice,
+          mrpCents: verifiedItem.mrpCents,
+          brand: verifiedItem.brand,
+          unit: verifiedItem.unit,
+          packSize: verifiedItem.packSize,
+          imageUrl: verifiedItem.imageUrl,
+          productUrl: verifiedItem.productUrl,
+          isPriceVerified: true,
+          priceSource: 'mcp_live',
+          priceFetchedAt: verifiedItem.priceFetchedAt || new Date().toISOString(),
+        });
+      }
+    }
+
+    if (unavailableItems.length > 0) {
+      throw new Error(
+        `Swiggy Instamart cannot assemble cart: Verified merchant price is unavailable for items: ${unavailableItems.join(', ')}. Silent fallback pricing is prohibited.`
+      );
+    }
+
+    const delEst = await this.getDeliveryEstimate(location);
+    const delFee = subtotalCents >= (delEst.freeDeliveryThresholdCents || 19900) ? 0 : (delEst.deliveryFeeCents || 2500);
+    const taxes = Math.round(subtotalCents * 0.05);
+    const totalAmountCents = subtotalCents + delFee + taxes;
+
     const proposal: QuickCommerceBasketProposal = {
       cartId,
       platform: 'swiggy_instamart',
       merchantName: 'Swiggy Instamart',
       deliveryAddress: location,
       currency: 'INR',
-      items: items.map((i) => ({
-        itemId: i.itemId,
-        quantity: i.quantity || 1,
-        unitPriceCents: 2500,
-        name: i.itemId,
-        brand: 'Swiggy Fresh',
-        productUrl: `https://www.swiggy.com/instamart/search?query=${encodeURIComponent(i.itemId)}`,
-      })),
-      subtotalCents: subtotal,
-      itemTotalCents: subtotal,
+      items: basketItems,
+      subtotalCents,
+      itemTotalCents: subtotalCents,
       deliveryFeeCents: delFee,
       surgeFeeCents: 0,
       taxCents: taxes,
       taxesCents: taxes,
-      totalAmountCents: subtotal + delFee + taxes,
+      totalAmountCents,
       isAvailable: true,
-      etaMinutes: 18,
-      darkStoreName: 'Swiggy Instamart Live Pod',
-      rainSurgeActive: false,
-      freeDeliveryThresholdCents: 19900,
+      etaMinutes: delEst.etaMinutes || 18,
+      darkStoreName: delEst.darkStoreName || 'Swiggy Instamart Live Pod',
+      rainSurgeActive: Boolean(delEst.rainSurgeActive),
+      freeDeliveryThresholdCents: delEst.freeDeliveryThresholdCents || 19900,
+      isPriceVerified: true,
+      priceSource: 'mcp_live',
+      priceFreshness: new Date().toISOString(),
+      isEstimate: true,
     };
     this.carts.set(cartId, proposal);
     return proposal;
@@ -378,21 +560,25 @@ export class SwiggyMcpClient {
       });
     }
 
-    const orderId = `swiggy_ord_${Date.now()}`;
     const cart = this.carts.get(cartId);
+    if (!cart) {
+      throw new Error(`Cannot checkout Swiggy order: Cart ${cartId} not found or expired.`);
+    }
+
+    const orderId = `swiggy_ord_${Date.now()}`;
     return {
       success: true,
       orderId,
       platform: 'swiggy_instamart',
-      totalChargedCents: cart?.totalAmountCents || 5400,
+      totalChargedCents: cart.totalAmountCents,
       currency: 'INR',
-      etaMinutes: 20,
+      etaMinutes: cart.etaMinutes || 20,
       trackingUrl: `https://swiggy.com/orders/${orderId}`,
       receiptSummary: {
-        itemsCount: cart?.items?.length || 1,
+        itemsCount: cart.items.length,
         platform: 'Swiggy Instamart',
-        deliveryAddress: cart?.deliveryAddress?.address || 'Customer Delivery Address',
-        deliveredAtEstimate: new Date(Date.now() + 20 * 60000).toISOString(),
+        deliveryAddress: cart.deliveryAddress?.address || 'Customer Delivery Address',
+        deliveredAtEstimate: new Date(Date.now() + (cart.etaMinutes || 20) * 60000).toISOString(),
       },
     };
   }

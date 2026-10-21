@@ -101,19 +101,24 @@ export class RealtimeCommerceFetcher {
         const unit = unitMatch ? unitMatch[1] : undefined;
 
         parsedItems.push({
-          id: `${platform}_live_${Date.now()}_${parsedItems.length + 1}`,
+          id: `${platform}_unverified_${Date.now()}_${parsedItems.length + 1}`,
           platform,
           merchantName,
           name: itemName,
           category: 'Grocery & Staples',
           priceCents,
           currency: 'INR',
-          inStock: true,
-          quantityAvailable: 25,
+          inStock: false, // Unverified web search snippets cannot be automatically checked out
+          quantityAvailable: 0,
           unit,
+          packSize: unit,
           description: text.slice(0, 200),
           brand: itemName.split(' ')[0],
           countryOfOrigin: 'India',
+          isPriceVerified: false,
+          priceSource: 'unavailable',
+          priceFetchedAt: new Date().toISOString(),
+          metadata: { unverifiedWebSnippet: true },
           productUrl:
             platform === 'zepto'
               ? `https://www.zeptonow.com/search?q=${encodeURIComponent(itemName)}`

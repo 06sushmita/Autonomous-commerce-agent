@@ -54,7 +54,7 @@ export class Ap2PravaBridge {
     const lineItems: CartLineItem[] = proposal.items.map((item) => {
       const pricePaise = item.unitPriceCents ?? (item as any).priceCents ?? 0;
       return {
-        productId: item.itemId || item.id,
+        productId: item.itemId || (item as any).id,
         name: item.name,
         quantity: item.quantity || 1,
         unitPrice: (pricePaise / 100).toFixed(2),
