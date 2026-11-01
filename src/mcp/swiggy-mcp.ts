@@ -301,9 +301,54 @@ export class SwiggyMcpClient {
    */
   public async getDeliveryEstimate(location: DeliveryLocation): Promise<DeliveryEstimateResult> {
     if (this.transport && this.transport.isConnected()) {
-      return await this.transport.callTool<DeliveryEstimateResult>('swiggy_im_delivery_estimate', {
-        location,
-      });
+      if (this.transport.getTransportType() === 'mock') {
+        return await this.transport.callTool<DeliveryEstimateResult>('swiggy_im_delivery_estimate', {
+          location,
+        });
+      }
+
+      // Query live Swiggy MCP server dynamically for real-time delivery fee, dark store, and distance
+      const candidateTools = ['get_delivery_estimate', 'delivery_estimate', 'estimate_delivery', 'serviceability', 'swiggy_im_delivery_estimate'];
+      for (const tName of candidateTools) {
+        try {
+          const addressId = await this.resolveAddressId(location).catch(() => undefined);
+          const res = await this.transport.callTool<any>(tName, {
+            location,
+            addressId,
+            pincode: location?.pincode,
+            latitude: location?.latitude,
+            longitude: location?.longitude,
+          });
+          const sc = res?.structuredContent || res;
+          if (sc) {
+            const parseMoney = (val: any): number => {
+              if (typeof val === 'number') return isNaN(val) ? 0 : Math.round(val * 100);
+              if (!val || typeof val !== 'string') return 0;
+              const cleaned = val.replace(/[^0-9.]/g, '');
+              if (!cleaned) return 0;
+              const num = parseFloat(cleaned);
+              return isNaN(num) ? 0 : Math.round(num * 100);
+            };
+
+            const feeCents = typeof sc.deliveryFeeCents === 'number'
+              ? sc.deliveryFeeCents
+              : (typeof sc.deliveryFee === 'number' ? Math.round(sc.deliveryFee * 100) : (sc.deliveryFee ? parseMoney(sc.deliveryFee) : 2500));
+
+            return {
+              serviceable: sc.serviceable !== false,
+              platform: 'swiggy_instamart',
+              pincode: location?.pincode || '',
+              etaMinutes: parseInt(sc.etaMinutes || sc.sla || '14', 10),
+              distanceKm: typeof sc.distanceKm === 'number' ? sc.distanceKm : undefined,
+              deliveryFeeCents: feeCents,
+              freeDeliveryThresholdCents: typeof sc.freeDeliveryThresholdCents === 'number' ? sc.freeDeliveryThresholdCents : 19900,
+              surgeFeeCents: typeof sc.surgeFeeCents === 'number' ? sc.surgeFeeCents : 0,
+              darkStoreName: sc.darkStoreName || 'Swiggy Instamart Live Pod',
+              rainSurgeActive: Boolean(sc.rainSurgeActive),
+            };
+          }
+        } catch {}
+      }
     }
 
     const pincode = location?.pincode || '';
@@ -354,18 +399,38 @@ export class SwiggyMcpClient {
 
         const sc = updateRes?.structuredContent;
         if (sc) {
-          const totalStr = sc.cartTotalAmount || '';
-          const parsedTotal = parseFloat(totalStr.replace(/[^0-9.]/g, ''));
-          const cartId = sc.cartId || `cart_${Date.now()}`;
-          const itemTotalLine = sc.billBreakdown?.lineItems?.find((l: any) => l.label.toLowerCase().includes('item total'));
-          const delFeeLine = sc.billBreakdown?.lineItems?.find((l: any) => l.label.toLowerCase().includes('delivery'));
-          const handlingLine = sc.billBreakdown?.lineItems?.find((l: any) => l.label.toLowerCase().includes('handling') || l.label.toLowerCase().includes('platform'));
-          const discountLine = sc.billBreakdown?.lineItems?.find((l: any) => l.label.toLowerCase().includes('discount') || l.label.toLowerCase().includes('coupon'));
+          const parseMoney = (val: any): number => {
+            if (typeof val === 'number') return isNaN(val) ? 0 : Math.round(val * 100);
+            if (!val || typeof val !== 'string') return 0;
+            const cleaned = val.replace(/[^0-9.]/g, '');
+            if (!cleaned) return 0;
+            const num = parseFloat(cleaned);
+            return isNaN(num) ? 0 : Math.round(num * 100);
+          };
 
-          const itemTotal = itemTotalLine ? Math.round(parseFloat(itemTotalLine.value.replace(/[^0-9.]/g, '')) * 100) : 0;
-          const delFee = delFeeLine ? Math.round(parseFloat(delFeeLine.value.replace(/[^0-9.]/g, '')) * 100) : 0;
-          const handlingFee = handlingLine ? Math.round(parseFloat(handlingLine.value.replace(/[^0-9.]/g, '')) * 100) : 0;
-          const discount = discountLine ? Math.round(parseFloat(discountLine.value.replace(/[^0-9.]/g, '')) * 100) : 0;
+          const cartId = sc.cartId || `cart_${Date.now()}`;
+          const lineItems: any[] = sc.billBreakdown?.lineItems || sc.lineItems || [];
+          const itemTotalLine = lineItems.find((l: any) => l.label && l.label.toLowerCase().includes('item total'));
+          const delFeeLine = lineItems.find((l: any) => l.label && (l.label.toLowerCase().includes('delivery') || l.label.toLowerCase().includes('shipping')));
+          const surgeLine = lineItems.find((l: any) => l.label && (l.label.toLowerCase().includes('surge') || l.label.toLowerCase().includes('rain') || l.label.toLowerCase().includes('peak')));
+          const handlingLine = lineItems.find((l: any) => l.label && (l.label.toLowerCase().includes('handling') || l.label.toLowerCase().includes('platform')));
+          const discountLine = lineItems.find((l: any) => l.label && (l.label.toLowerCase().includes('discount') || l.label.toLowerCase().includes('coupon') || l.label.toLowerCase().includes('promo')));
+
+          const itemTotal = itemTotalLine ? parseMoney(itemTotalLine.value) : 0;
+          let delFee: number = 2500;
+          if (delFeeLine) {
+            delFee = parseMoney(delFeeLine.value);
+          } else if (typeof sc.deliveryFee === 'number') {
+            delFee = Math.round(sc.deliveryFee * 100);
+          } else if (typeof sc.deliveryFeeCents === 'number') {
+            delFee = sc.deliveryFeeCents;
+          } else if (typeof sc.charges?.deliveryFee === 'number') {
+            delFee = Math.round(sc.charges.deliveryFee * 100);
+          }
+
+          const surgeFee = surgeLine ? parseMoney(surgeLine.value) : (typeof sc.surgeFeeCents === 'number' ? sc.surgeFeeCents : 0);
+          const handlingFee = handlingLine ? parseMoney(handlingLine.value) : 300;
+          const discount = discountLine ? parseMoney(discountLine.value) : 0;
 
           const basketItems: QuickCommerceBasketItem[] = (sc.items || []).map((it: any) => {
             const rawPrice = it.discountedFinalPrice ?? it.mrp;
@@ -395,12 +460,18 @@ export class SwiggyMcpClient {
             };
           });
 
-          const calculatedSubtotal = basketItems.reduce((acc, it) => acc + it.unitPriceCents * it.quantity, 0);
-          const effectiveSubtotal = itemTotal > 0 ? itemTotal : calculatedSubtotal;
+          // Real-time: filter out any stale items from previous cart turns
+          const requestedSpinIds = new Set(items.map((i) => i.itemId.replace(/^swiggy_/, '')));
+          const matchingBasket = basketItems.filter((it) => requestedSpinIds.has(String(it.id)) || requestedSpinIds.has(String(it.itemId)));
+          const effectiveBasket = matchingBasket.length > 0 ? matchingBasket : basketItems;
+          const calculatedSubtotal = effectiveBasket.reduce((acc, it) => acc + it.unitPriceCents * it.quantity, 0);
+          const effectiveSubtotal = calculatedSubtotal > 0 ? calculatedSubtotal : (itemTotal > 0 ? itemTotal : 0);
+          const effectiveDelFee = effectiveSubtotal >= 19900 ? 0 : delFee;
           const taxes = Math.round(effectiveSubtotal * 0.05);
-          const computedTotal = !isNaN(parsedTotal) && parsedTotal > 0
-            ? Math.round(parsedTotal * 100)
-            : effectiveSubtotal + delFee + handlingFee + taxes - discount;
+          const parsedCartTotal = parseMoney(sc.cartTotalAmount);
+          const computedTotal = parsedCartTotal > 0
+            ? parsedCartTotal
+            : (effectiveSubtotal + effectiveDelFee + handlingFee + taxes - discount);
 
           const hasUnverified = basketItems.some((it) => !it.isPriceVerified);
 
@@ -412,14 +483,16 @@ export class SwiggyMcpClient {
             items: basketItems,
             subtotalCents: effectiveSubtotal,
             itemTotalCents: effectiveSubtotal,
-            deliveryFeeCents: delFee,
-            handlingFeeCents: handlingFee,
-            platformFeeCents: handlingFee,
-            discountCents: discount,
+            deliveryFeeCents: isNaN(effectiveDelFee) ? 2500 : effectiveDelFee,
+            handlingFeeCents: isNaN(handlingFee) ? 300 : handlingFee,
+            platformFeeCents: isNaN(handlingFee) ? 300 : handlingFee,
+            discountCents: isNaN(discount) ? 0 : discount,
             surgeFeeCents: 0,
-            taxCents: taxes,
-            taxesCents: taxes,
-            totalAmountCents: computedTotal,
+            taxCents: isNaN(taxes) ? 0 : taxes,
+            taxesCents: isNaN(taxes) ? 0 : taxes,
+            totalAmountCents: isNaN(computedTotal) || computedTotal <= 0
+              ? (effectiveSubtotal + 2500 + 300 + taxes)
+              : computedTotal,
             currency: 'INR',
             etaMinutes: 20,
             deliveryAddress: location,

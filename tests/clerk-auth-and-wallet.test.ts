@@ -213,6 +213,31 @@ describe('Clerk Authentication, Dynamic Wallet Budget & Dynamic Location Suite',
       expect(json.requiresSignup).toBe(true);
       expect(json.error).toContain('Authentication Required');
     });
+
+    it('POST /api/auth/google logs in user via Google account and initializes spend allowance', async () => {
+      const res = await fetch(`${baseUrl}/api/auth/google`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          email: 'google.shopper@gmail.com',
+          displayName: 'Google Shopper',
+        }),
+      });
+      expect(res.status).toBe(200);
+      const json = await res.json() as any;
+      expect(json.success).toBe(true);
+      expect(json.user).toBeDefined();
+      expect(json.user.email).toBe('google.shopper@gmail.com');
+      expect(json.user.displayName).toBe('Google Shopper');
+      expect(json.remainingSpendINR).toBeDefined();
+    });
+
+    it('GET /sso-callback serves the Google authentication callback page', async () => {
+      const res = await fetch(`${baseUrl}/sso-callback`);
+      expect(res.status).toBe(200);
+      const html = await res.text();
+      expect(html).toContain('Connecting with Google');
+    });
   });
 });
 

@@ -109,14 +109,14 @@ export class OrderValidator {
     }
 
     // 2. Check dark-store item stock availability
-    if (proposal.isAvailable === false || (proposal.unavailableItems && proposal.unavailableItems.length > 0)) {
+    if (proposal.orderStatus === 'PARTIALLY_FULFILLED' || proposal.isAvailable === false || (proposal.unavailableItems && proposal.unavailableItems.length > 0)) {
       return {
         valid: false,
         budgetAllowed: false,
         stockAvailable: false,
         locationConfirmed: isLocationConfirmed,
         remainingDailySpendCents: 0,
-        errorMessage: `Some items in the cart are currently out of stock at the ${proposal.merchantName} dark store.`,
+        errorMessage: `Some items in the cart are currently out of stock or unavailable at the ${proposal.merchantName} dark store (${proposal.unavailableItems?.join(', ') || 'partially unfulfilled'}).`,
       };
     }
 
@@ -151,7 +151,7 @@ export class OrderValidator {
       dailySpendLimitCents
     );
 
-    if (!spendCheck.allowed) {
+    if (proposal.budgetExceeded || !spendCheck.allowed) {
       proposal.budgetExceeded = true;
       proposal.excessAmountCents = proposal.totalAmountCents - spendCheck.remainingDailyCents;
       return {
@@ -160,7 +160,7 @@ export class OrderValidator {
         stockAvailable: true,
         locationConfirmed: true,
         remainingDailySpendCents: spendCheck.remainingDailyCents,
-        errorMessage: spendCheck.reason,
+        errorMessage: (!spendCheck.allowed ? spendCheck.reason : 'Basket total exceeds specified budget limit.'),
       };
     }
 

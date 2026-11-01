@@ -322,9 +322,27 @@ export class ZeptoMcpClient {
         this.findToolName(['delivery_estimate', 'location.lookup', 'estimate']) ||
         'zepto_delivery_estimate';
 
-      return await this.transport.callTool<DeliveryEstimateResult>(toolName, {
+      const res = await this.transport.callTool<any>(toolName, {
         location,
       });
+      const sc = res?.structuredContent || res;
+      if (sc) {
+        const feeCents = typeof sc.deliveryFeeCents === 'number'
+          ? sc.deliveryFeeCents
+          : (typeof sc.deliveryFee === 'number' ? Math.round(sc.deliveryFee * 100) : 2000);
+        return {
+          serviceable: sc.serviceable !== false,
+          platform: 'zepto',
+          pincode: location?.pincode || sc.pincode || '',
+          etaMinutes: parseInt(sc.etaMinutes || sc.sla || '10', 10),
+          distanceKm: typeof sc.distanceKm === 'number' ? sc.distanceKm : undefined,
+          deliveryFeeCents: feeCents,
+          freeDeliveryThresholdCents: typeof sc.freeDeliveryThresholdCents === 'number' ? sc.freeDeliveryThresholdCents : 14900,
+          surgeFeeCents: typeof sc.surgeFeeCents === 'number' ? sc.surgeFeeCents : 0,
+          darkStoreName: sc.darkStoreName || 'Zepto Live Dark Store',
+          rainSurgeActive: Boolean(sc.rainSurgeActive),
+        };
+      }
     }
 
     const pincode = location?.pincode || '';
@@ -386,13 +404,37 @@ export class ZeptoMcpClient {
           proposal.priceSource = hasUnverified ? 'unavailable' : 'mcp_live';
           proposal.priceFreshness = new Date().toISOString();
           proposal.isEstimate = true;
-          if (proposal.totalAmountCents === undefined || isNaN(proposal.totalAmountCents)) {
-            const subtotal = proposal.items.reduce((acc, it) => acc + (it.unitPriceCents || 0) * (it.quantity || 1), 0);
-            proposal.subtotalCents = proposal.subtotalCents ?? subtotal;
-            proposal.deliveryFeeCents = proposal.deliveryFeeCents ?? 2000;
-            proposal.taxCents = proposal.taxCents ?? Math.round(subtotal * 0.05);
-            proposal.totalAmountCents = proposal.subtotalCents + proposal.deliveryFeeCents + proposal.taxCents;
+          // Real-time: filter out any stale items left in the remote cart session
+          const requestedIds = new Set(items.map((i) => i.itemId));
+          const matchingItems = proposal.items.filter((it) => requestedIds.has(it.itemId || it.id || ''));
+          if (matchingItems.length > 0) {
+            proposal.items = matchingItems;
           }
+          const subtotal = proposal.items.reduce((acc, it) => acc + (it.unitPriceCents || 0) * (it.quantity || 1), 0);
+          if (subtotal > 0) proposal.subtotalCents = subtotal;
+
+          // Real-time delivery fee dynamically extracted from live Zepto response
+          const rawProp = proposal as any;
+          let liveZeptoDelFee: number | undefined;
+          if (typeof rawProp.deliveryFeeCents === 'number' && !isNaN(rawProp.deliveryFeeCents)) {
+            liveZeptoDelFee = rawProp.deliveryFeeCents;
+          } else if (typeof rawProp.deliveryFee === 'number') {
+            liveZeptoDelFee = Math.round(rawProp.deliveryFee * 100);
+          } else if (typeof rawProp.charges?.deliveryFee === 'number') {
+            liveZeptoDelFee = Math.round(rawProp.charges.deliveryFee * 100);
+          } else if (typeof rawProp.delivery_fee === 'number') {
+            liveZeptoDelFee = Math.round(rawProp.delivery_fee * 100);
+          }
+
+          const freeThreshold = typeof rawProp.freeDeliveryThresholdCents === 'number'
+            ? rawProp.freeDeliveryThresholdCents
+            : (typeof rawProp.freeDeliveryThreshold === 'number' ? Math.round(rawProp.freeDeliveryThreshold * 100) : 14900);
+
+          proposal.freeDeliveryThresholdCents = freeThreshold;
+          proposal.deliveryFeeCents = subtotal >= freeThreshold ? 0 : (liveZeptoDelFee !== undefined ? liveZeptoDelFee : 2000);
+          proposal.taxCents = Math.round(subtotal * 0.05);
+          proposal.taxesCents = proposal.taxCents;
+          proposal.totalAmountCents = proposal.subtotalCents + proposal.deliveryFeeCents + (proposal.handlingFeeCents || 0) + proposal.taxCents;
           if (proposal.cartId) {
             this.carts.set(proposal.cartId, proposal);
           }

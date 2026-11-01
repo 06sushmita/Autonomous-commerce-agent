@@ -90,6 +90,13 @@ export interface RegisterUserInput {
   dailySpendLimitINR?: number;
 }
 
+export interface GoogleAuthInput {
+  email: string;
+  displayName?: string;
+  googleId?: string;
+  avatarUrl?: string;
+}
+
 export class AuthProvider {
   private users: Map<string, AuthUser> = new Map();
   private activeUserId: string = DEFAULT_MOCK_USER.id;
@@ -504,6 +511,90 @@ export class AuthProvider {
 
     // 3. Fall back to registered user store
     return this.loginUser(emailOrPhone, password);
+  }
+
+  /**
+   * Log in or register a user seamlessly via Google Sign-In
+   */
+  public async loginOrRegisterGoogle(input: GoogleAuthInput): Promise<AuthUser> {
+    if (!input.email) {
+      throw new Error('Google email address is required.');
+    }
+    const emailNorm = input.email.toLowerCase().trim();
+
+    // 1. Check existing in-memory users
+    const existing = this.users.get(emailNorm);
+    if (existing) {
+      this.activeUserId = existing.id;
+      return existing;
+    }
+
+    // 2. Check Neon Database
+    const db = getDb();
+    if (db) {
+      try {
+        const dbUser = await db.query.users.findFirst({
+          where: eq(users.email, emailNorm),
+        });
+        if (dbUser) {
+          const authUser: AuthUser = {
+            id: dbUser.id,
+            clerkUserId: dbUser.clerkUserId,
+            email: dbUser.email,
+            displayName: dbUser.displayName,
+            defaultAddress: dbUser.defaultAddress || 'Flat 402, Green Glen Layout, Bellandur, Bengaluru',
+            defaultPincode: dbUser.defaultPincode || '560103',
+            defaultLatitude: dbUser.defaultLatitude || 12.9298,
+            defaultLongitude: dbUser.defaultLongitude || 77.6835,
+            dailySpendLimitCents: dbUser.dailySpendLimitCents || 500000,
+            pravaAccountId: dbUser.pravaAccountId || undefined,
+          };
+          this.seedUser(authUser);
+          this.activeUserId = authUser.id;
+          return authUser;
+        }
+      } catch (err: any) {
+        console.warn('DB lookup note in Google auth:', err.message);
+      }
+    }
+
+    // 3. Create a new user profile for Google Sign-In
+    const rawName = input.displayName?.trim() || emailNorm.split('@')[0];
+    const formattedName = rawName
+      .replace(/[._]/g, ' ')
+      .replace(/\b\w/g, (c) => c.toUpperCase());
+    const googleUserId = input.googleId || `google_${Date.now()}_${Math.random().toString(36).substring(2, 7)}`;
+
+    try {
+      const newUser = await this.registerWithClerk({
+        displayName: formattedName,
+        email: emailNorm,
+        address: 'Flat 402, Green Glen Layout, Bellandur, Bengaluru, Karnataka 560103',
+        pincode: '560103',
+        latitude: 12.9298,
+        longitude: 77.6835,
+        dailySpendLimitINR: 5000,
+      });
+      this.activeUserId = newUser.id;
+      return newUser;
+    } catch {
+      // Fallback for offline / mock testing
+      const fallbackUser: AuthUser = {
+        id: googleUserId,
+        clerkUserId: googleUserId,
+        email: emailNorm,
+        displayName: formattedName,
+        defaultAddress: 'Flat 402, Green Glen Layout, Bellandur, Bengaluru, Karnataka 560103',
+        defaultPincode: '560103',
+        defaultLatitude: 12.9298,
+        defaultLongitude: 77.6835,
+        dailySpendLimitCents: 500000,
+        pravaAccountId: `prava_${googleUserId}`,
+      };
+      this.seedUser(fallbackUser);
+      this.activeUserId = fallbackUser.id;
+      return fallbackUser;
+    }
   }
 
   /**

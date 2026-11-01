@@ -19,6 +19,9 @@ import {
 } from './types.js';
 import { swiggyMcpClient, SwiggyMcpClient } from './swiggy-mcp.js';
 import { zeptoMcpClient, ZeptoMcpClient } from './zepto-mcp.js';
+import { normalizeQuantityAndPack, calculateBasketTotals, parsePackageSize } from '../agent/cart-calculator.js';
+import { normalizeBrand } from '../agent/intent-extractor.js';
+import { MatchClassification, OrderFulfillmentStatus, PackSizePreference, QuickCommerceBasketItem } from './types.js';
 
 export interface MultiPlatformComparison {
   query: string;
@@ -246,6 +249,18 @@ export class QuickCommerceMcpManager {
    *
    * Slices to the top N items (default: 5) to guarantee the agent never returns 50-100 raw items.
    */
+  /**
+   * Filter and rank items strictly enforcing the required 7-tier priority hierarchy:
+   * 1. Product identity and relevance
+   * 2. Requested brand
+   * 3. Variant compatibility
+   * 4. Quantity and pack-size compatibility
+   * 5. Live stock availability
+   * 6. Price
+   * 7. Delivery time
+   *
+   * Slices to the top N items (default: 5) to guarantee the agent never returns 50-100 raw items.
+   */
   public rankTopItems(
     items: QuickCommerceItem[],
     options?: {
@@ -260,7 +275,7 @@ export class QuickCommerceMcpManager {
 
     const limit = options?.limit ?? 5;
     const query = (options?.query || '').toLowerCase().trim();
-    const targetBrand = options?.targetBrand?.toLowerCase();
+    const targetBrand = options?.targetBrand ? options.targetBrand.toLowerCase() : undefined;
     const maxCost = options?.maxCostCents;
 
     // Extract core tokens for product relevance
@@ -285,7 +300,7 @@ export class QuickCommerceMcpManager {
       }
     }
 
-    // Sort according to 4-tier constraint hierarchy: Price, Quantity, Product, Brand
+    // Sort according to 7-tier constraint hierarchy
     const sorted = [...uniqueItems].sort((a, b) => {
       // 0. Live verification gate (fail-closed, no mock/unverified items)
       const aVerified = a.isPriceVerified !== false && a.priceCents > 0;
@@ -313,31 +328,55 @@ export class QuickCommerceMcpManager {
         if (aCore !== bCore) return aCore ? -1 : 1;
       }
 
-      // 2. Quantity & Stock Availability: In-stock strictly before out-of-stock
-      const aStock = Boolean(a.inStock !== false);
-      const bStock = Boolean(b.inStock !== false);
-      if (aStock !== bStock) return aStock ? -1 : 1;
-
-      // 3. Brand match (if target brand was requested)
+      // 2. Requested brand fidelity
       if (targetBrand) {
         const aBrand = (a.brand || '').toLowerCase().includes(targetBrand) || a.name.toLowerCase().includes(targetBrand);
         const bBrand = (b.brand || '').toLowerCase().includes(targetBrand) || b.name.toLowerCase().includes(targetBrand);
         if (aBrand !== bBrand) return aBrand ? -1 : 1;
       }
 
-      // 4. Price ("prize") constraint: Items within budget rank before items exceeding budget
+      // 3. Variant compatibility (e.g. brown bread vs white bread, masala vs regular)
+      const aName = a.name.toLowerCase();
+      const bName = b.name.toLowerCase();
+      const variantKeywords = ['masala', 'brown', 'toned', 'whole wheat', 'white', 'salted'];
+      const requestedVariants = variantKeywords.filter((v) => cleanQuery.includes(v));
+      if (requestedVariants.length > 0) {
+        const aVariantMatch = requestedVariants.some((v) => aName.includes(v));
+        const bVariantMatch = requestedVariants.some((v) => bName.includes(v));
+        if (aVariantMatch !== bVariantMatch) return aVariantMatch ? -1 : 1;
+      }
+
+      // 4. Quantity & pack-size compatibility
+      const reqUnit = parseAndNormalizeUnit(cleanQuery);
+      if (reqUnit) {
+        const aUnit = parseAndNormalizeUnit(a.unit || a.packSize || a.name);
+        const bUnit = parseAndNormalizeUnit(b.unit || b.packSize || b.name);
+        const aSizeMatch = aUnit && aUnit.type === reqUnit.type && aUnit.baseValue === reqUnit.baseValue;
+        const bSizeMatch = bUnit && bUnit.type === reqUnit.type && bUnit.baseValue === reqUnit.baseValue;
+        if (aSizeMatch !== bSizeMatch) return aSizeMatch ? -1 : 1;
+      }
+
+      // 5. Live stock availability: In-stock strictly before out-of-stock
+      const aStock = Boolean(a.inStock !== false);
+      const bStock = Boolean(b.inStock !== false);
+      if (aStock !== bStock) return aStock ? -1 : 1;
+
+      // 6. Price: Items within budget rank before items exceeding budget, then lowest price first
       if (maxCost) {
         const aUnderBudget = a.priceCents <= maxCost;
         const bUnderBudget = b.priceCents <= maxCost;
         if (aUnderBudget !== bUnderBudget) return aUnderBudget ? -1 : 1;
       }
-
-      // 5. Lowest unit price comes first
       if (a.priceCents !== b.priceCents) {
         return a.priceCents - b.priceCents;
       }
 
-      // 6. Quantity available tie-breaker
+      // 7. Delivery time
+      const aEta = a.etaMinutes ?? 20;
+      const bEta = b.etaMinutes ?? 20;
+      if (aEta !== bEta) return aEta - bEta;
+
+      // Quantity available tie-breaker
       const aQty = a.quantityAvailable || 20;
       const bQty = b.quantityAvailable || 20;
       if (aQty !== bQty) return bQty - aQty;
@@ -439,6 +478,11 @@ export class QuickCommerceMcpManager {
    * Normalizes units for comparison, but never compares different package sizes as if they were identical.
    * Strictly enforces that brand, cost limit, quantity/stock, time SLA, and live price are acceptable.
    */
+  /**
+   * Match equivalent products using brand, package size, quantity, availability, unit price, and delivery ETA constraints.
+   * Normalizes units for comparison, but never compares different package sizes as if they were identical.
+   * Strictly enforces that brand, cost limit, quantity/stock, time SLA, and live price are acceptable.
+   */
   public matchEquivalentProduct(
     requested: {
       name: string;
@@ -446,6 +490,10 @@ export class QuickCommerceMcpManager {
       brand?: string;
       maxCostCents?: number;
       maxEtaMinutes?: number;
+      requestedQuantity?: number;
+      requestedUnit?: string;
+      packSizePreference?: PackSizePreference | null;
+      variants?: string[];
     },
     availableItems: QuickCommerceItem[],
     darkStoreEtaMinutes?: number
@@ -469,15 +517,26 @@ export class QuickCommerceMcpManager {
       'cadbury',
       'safal',
       'suguna',
+      'maggi',
+      'maggie',
+      'yippee',
+      'top ramen',
     ];
-    const detectedBrand = knownBrands.find((b) => requestedLower.includes(b));
-    const targetBrand = requested.brand || detectedBrand;
+    let detectedBrand = knownBrands.find((b) => requestedLower.includes(b));
+    if (detectedBrand) {
+      detectedBrand = normalizeBrand(detectedBrand) || detectedBrand;
+    }
+    const targetBrand = normalizeBrand(requested.brand) || detectedBrand;
 
     // Extract core product keywords (excluding brand and common volume/count units)
     const brandPattern = targetBrand ? new RegExp(`\\b${targetBrand.toLowerCase()}\\b`, 'gi') : null;
-    const strippedName = (brandPattern ? requestedLower.replace(brandPattern, '') : requestedLower)
+    let strippedName = (brandPattern ? requestedLower.replace(brandPattern, '') : requestedLower)
       .replace(/\b(?:\d+\s*(?:l|ltr|litre|liter|litres|liters|ml|g|gm|kg|pcs?|pieces?|pack|packets?|box|carton))\b/gi, '')
       .trim();
+
+    if (/\b(?:maggi|maggie|noodles?)\b/i.test(requestedLower)) {
+      strippedName = 'noodles';
+    }
 
     const stem = (s: string) => (s.endsWith('s') && s.length > 3 ? s.slice(0, -1) : s);
     const coreTokens = strippedName
@@ -485,11 +544,15 @@ export class QuickCommerceMcpManager {
       .map((t) => t.replace(/[^a-z0-9]/g, ''))
       .filter((t) => t.length > 2 && !['and', 'for', 'the', 'with', 'item', 'product', 'fresh', 'best', 'good'].includes(t));
 
+    const reqQtyVal = requested.requestedQuantity ?? requested.quantity;
+    const reqUnitStr = requested.requestedUnit || (requestedLower.includes('egg') ? 'piece' : 'packet');
+
     if (!availableItems || availableItems.length === 0) {
       return {
         requestedName: requested.name,
-        requestedBrand: targetBrand,
-        requestedQuantity: requested.quantity,
+        requestedBrand: targetBrand || undefined,
+        requestedQuantity: reqQtyVal,
+        requestedUnit: reqUnitStr,
         maxCostCents: requested.maxCostCents,
         maxEtaMinutes: requested.maxEtaMinutes,
         brandMatch: false,
@@ -497,6 +560,7 @@ export class QuickCommerceMcpManager {
         isVerified: false,
         inStock: false,
         status: 'missing',
+        matchClassification: 'NO_MATCH',
         notes: 'No items found for product query.',
         rejectionReason: `No items found matching "${requested.name}".`,
       };
@@ -516,9 +580,10 @@ export class QuickCommerceMcpManager {
 
       let score = 0;
 
-      // 0. Core product category/name match (prevents brand false positives like Mango Lassi when user asked for Milk)
+      // 0. Core product category/name match
+      let coreMatched = false;
       if (coreTokens.length > 0) {
-        const coreMatched = coreTokens.some((tok) => {
+        coreMatched = coreTokens.some((tok) => {
           const st = stem(tok);
           return (
             itemNameLower.includes(tok) ||
@@ -528,10 +593,13 @@ export class QuickCommerceMcpManager {
           );
         });
         if (coreMatched) {
-          score += 140; // Strong bonus for matching core product category
+          score += 200;
         } else {
-          score -= 1000; // Strong penalty: product name does not match requested grocery item
+          score -= 1000;
         }
+      } else {
+        coreMatched = true;
+        score += 100;
       }
 
       // 1. In-stock requirement
@@ -555,23 +623,22 @@ export class QuickCommerceMcpManager {
       );
       if (targetBrand) {
         if (brandMatched) {
-          score += 150; // Strong bonus for matching requested brand
+          score += 150;
         } else {
-          score -= 300; // Strong penalty for non-matching brand
+          score -= 100; // Deprioritize non-matching brand
         }
       }
 
-      // 4. Cost constraint scoring (Price is the primary optimization constraint)
+      // 4. Cost constraint scoring
       let costMatched = true;
       if (item.priceCents && item.priceCents > 0) {
-        // Prioritize lowest verified unit price
         score += Math.max(0, 50000 - item.priceCents) / 250;
       }
       if (requested.maxCostCents && item.priceCents) {
         if (item.priceCents <= requested.maxCostCents) {
           score += 80;
         } else {
-          score -= 500; // Strongly deprioritize items exceeding budget
+          score -= 500;
           costMatched = false;
         }
       }
@@ -582,26 +649,20 @@ export class QuickCommerceMcpManager {
         if (itemUnit && itemUnit.type === requestedUnit.type) {
           if (itemUnit.baseValue === requestedUnit.baseValue) {
             sizeMatched = true;
-            score += 70; // Exact package size match
+            score += 70;
           } else {
-            // Material size mismatch: do not treat as identical
-            score -= 100;
+            score -= 50;
           }
         } else {
-          score -= 50;
+          score -= 30;
         }
       } else {
-        // No specific size requested; any standard size is acceptable
         sizeMatched = true;
       }
 
-      // Substring & token overlap matching
+      // Substring overlap
       if (itemNameLower.includes(requestedLower)) {
         score += 40;
-      }
-      const tokens = requestedLower.split(/\s+/).filter((t) => t.length > 1);
-      for (const token of tokens) {
-        if (itemNameLower.includes(token)) score += 10;
       }
 
       if (score > highestScore) {
@@ -616,13 +677,15 @@ export class QuickCommerceMcpManager {
     if (!bestItem) {
       return {
         requestedName: requested.name,
-        requestedBrand: targetBrand,
-        requestedQuantity: requested.quantity,
+        requestedBrand: targetBrand || undefined,
+        requestedQuantity: reqQtyVal,
+        requestedUnit: reqUnitStr,
         brandMatch: false,
         packageSizeMatch: false,
         isVerified: false,
         inStock: false,
         status: 'missing',
+        matchClassification: 'NO_MATCH',
         rejectionReason: `No acceptable item found for "${requested.name}".`,
       };
     }
@@ -630,10 +693,6 @@ export class QuickCommerceMcpManager {
     const isVerified = Boolean(bestItem.isPriceVerified !== false && bestItem.priceCents > 0);
     const inStock = Boolean(bestItem.inStock !== false && isVerified);
     const effectiveEta = darkStoreEtaMinutes ?? bestItem.etaMinutes ?? 20;
-
-    // Strict multi-constraint verification: ALL 5 MUST BE ACCEPTABLE
-    let status: ProductMatchResult['status'] = 'verified_match';
-    let rejectionReason: string | undefined;
 
     const itemCatLower = (bestItem.category || '').toLowerCase();
     const bestItemNameLower = bestItem.name.toLowerCase();
@@ -647,34 +706,55 @@ export class QuickCommerceMcpManager {
       );
     });
 
+    let status: ProductMatchResult['status'] = 'verified_match';
+    let matchClassification: MatchClassification = 'NO_MATCH';
+    let isAlternative = false;
+    let alternativeReason: string | undefined;
+    let rejectionReason: string | undefined;
+
     if (!isVerified) {
       status = 'unverified';
+      matchClassification = 'NO_MATCH';
       rejectionReason = `Live price for "${bestItem.name}" is unverified.`;
     } else if (!inStock) {
       status = 'out_of_stock';
+      matchClassification = 'NO_MATCH';
       rejectionReason = `Item "${bestItem.name}" is currently out of stock at this dark store.`;
     } else if (!coreProductMatches) {
       status = 'missing';
+      matchClassification = 'NO_MATCH';
       rejectionReason = `No acceptable item matching "${requested.name}" found in catalog (closest item "${bestItem.name}" does not match requested product).`;
     } else if (targetBrand && !bestBrandMatch) {
       status = 'brand_mismatch';
+      matchClassification = 'ALTERNATIVE';
+      isAlternative = true;
+      alternativeReason = `Requested brand "${targetBrand}" is not available. Found "${bestItem.brand || bestItem.name}" as an alternative.`;
       rejectionReason = `Requested brand "${targetBrand}" is not available. Found "${bestItem.brand || bestItem.name}".`;
     } else if (requested.maxCostCents && bestItem.priceCents > requested.maxCostCents) {
       status = 'cost_exceeded';
+      matchClassification = 'NO_MATCH';
       rejectionReason = `Item cost (₹${(bestItem.priceCents / 100).toFixed(2)}) exceeds maximum budget limit of ₹${(requested.maxCostCents / 100).toFixed(2)}.`;
     } else if (requested.maxEtaMinutes && effectiveEta > requested.maxEtaMinutes) {
       status = 'eta_exceeded';
+      matchClassification = 'NO_MATCH';
       rejectionReason = `Delivery ETA (${effectiveEta} mins) exceeds required delivery constraint (${requested.maxEtaMinutes} mins).`;
     } else if (requestedUnit && !bestSizeMatch) {
       status = 'size_mismatch';
+      matchClassification = targetBrand ? 'EXACT_MATCH' : 'COMPATIBLE_MATCH';
       rejectionReason = `Package size does not match requested unit ${requestedUnit.unitString}.`;
+    } else {
+      status = 'verified_match';
+      matchClassification = targetBrand ? 'EXACT_MATCH' : 'COMPATIBLE_MATCH';
     }
+
+    // Run deterministic quantity & pack-size normalization
+    const norm = normalizeQuantityAndPack(reqQtyVal, reqUnitStr, bestItem);
 
     return {
       requestedName: requested.name,
-      requestedBrand: targetBrand,
-      requestedQuantity: requested.quantity,
-      requestedUnit: requestedUnit?.unitString,
+      requestedBrand: targetBrand || undefined,
+      requestedQuantity: reqQtyVal,
+      requestedUnit: reqUnitStr,
       maxCostCents: requested.maxCostCents,
       maxEtaMinutes: requested.maxEtaMinutes,
       matchedItem: bestItem,
@@ -686,6 +766,17 @@ export class QuickCommerceMcpManager {
       isVerified,
       inStock,
       status,
+      matchClassification,
+      isAlternative,
+      alternativeReason,
+      orderQuantity: norm.orderQuantity,
+      quantityPerPackage: norm.packSize.quantityPerPackage,
+      actualSuppliedQuantity: norm.actualSuppliedQuantity,
+      actualSuppliedUnit: norm.actualSuppliedUnit,
+      discloseSuppliedDiff: norm.discloseSuppliedDiff,
+      disclosureNote: norm.disclosureNote,
+      packSizeDescription: norm.packSize.displayUnit,
+      totalPriceCents: norm.totalPriceCents,
       rejectionReason,
     };
   }
@@ -696,8 +787,24 @@ export class QuickCommerceMcpManager {
    * Respects explicit user merchant preference without silent merchant switching.
    * Strictly enforces brand, cost, quantity, and delivery time constraints.
    */
+  /**
+   * Assemble and compare carts across Swiggy and Zepto with high accuracy.
+   * Compares complete basket totals (including delivery fees, handling fees, and taxes).
+   * Respects explicit user merchant preference without silent merchant switching.
+   * Strictly enforces brand, cost, quantity, and delivery time constraints.
+   */
   public async compareAndAssembleBasket(
-    items: Array<{ name: string; quantity: number; brand?: string; maxCostCents?: number; maxEtaMinutes?: number }>,
+    items: Array<{
+      name: string;
+      quantity: number;
+      brand?: string;
+      maxCostCents?: number;
+      maxEtaMinutes?: number;
+      requestedQuantity?: number;
+      requestedUnit?: string;
+      packSizePreference?: PackSizePreference | null;
+      variants?: string[];
+    }>,
     location: DeliveryLocation,
     explicitMerchant?: 'swiggy' | 'zepto'
   ): Promise<MultiPlatformComparison> {
@@ -713,7 +820,10 @@ export class QuickCommerceMcpManager {
     // Helper to produce highest-accuracy merchant search query
     const buildSearchQuery = (item: { name: string; brand?: string }) => {
       const brandStr = item.brand ? item.brand.trim() : '';
-      const nameStr = item.name.trim();
+      let nameStr = item.name.trim();
+      if (/noodles?/i.test(nameStr) && !nameStr.toLowerCase().includes('maggi') && brandStr.toLowerCase() === 'maggi') {
+        return 'Maggi noodles';
+      }
       if (brandStr && !nameStr.toLowerCase().includes(brandStr.toLowerCase())) {
         return `${brandStr} ${nameStr}`;
       }
@@ -726,6 +836,15 @@ export class QuickCommerceMcpManager {
       explicitMerchant !== 'swiggy' ? this.zepto.getDeliveryEstimate(location).catch(() => undefined) : undefined,
     ]);
 
+    const isFulfilledMatch = (m: ProductMatchResult) =>
+      (m.matchClassification === 'EXACT_MATCH' || m.matchClassification === 'COMPATIBLE_MATCH') &&
+      (m.status === 'verified_match' || m.status === 'size_mismatch') &&
+      m.brandMatch !== false &&
+      m.inStock &&
+      m.isVerified &&
+      m.costMatch !== false &&
+      m.etaMatch !== false;
+
     // 1. Resolve items on Swiggy in Parallel
     if (explicitMerchant !== 'zepto') {
       const swiggyPromises: Promise<ProductMatchResult>[] = items.map(async (item) => {
@@ -737,12 +856,14 @@ export class QuickCommerceMcpManager {
           const fallback: ProductMatchResult = {
             requestedName: item.name,
             requestedBrand: item.brand,
-            requestedQuantity: item.quantity,
+            requestedQuantity: item.requestedQuantity ?? item.quantity,
+            requestedUnit: item.requestedUnit,
             brandMatch: false,
             packageSizeMatch: false,
             isVerified: false,
             inStock: false,
             status: 'missing',
+            matchClassification: 'NO_MATCH',
             notes: err.message,
             rejectionReason: err.message,
           };
@@ -750,19 +871,11 @@ export class QuickCommerceMcpManager {
         }
       });
 
-      const isConstraintApproved = (m: ProductMatchResult) =>
-        (m.status === 'verified_match' || m.status === 'size_mismatch') &&
-        m.brandMatch !== false &&
-        m.inStock &&
-        m.isVerified &&
-        m.costMatch !== false &&
-        m.etaMatch !== false;
-
       const results = await Promise.all(swiggyPromises);
       results.forEach((match) => {
         swiggyMatches.push(match);
-        if (match.matchedItem && isConstraintApproved(match)) {
-          swiggyCartItems.push({ itemId: match.matchedItem.id, quantity: match.requestedQuantity });
+        if (match.matchedItem && isFulfilledMatch(match)) {
+          swiggyCartItems.push({ itemId: match.matchedItem.id, quantity: match.orderQuantity || 1 });
           swiggyResolvedItems.push(match.matchedItem);
         }
       });
@@ -770,14 +883,6 @@ export class QuickCommerceMcpManager {
 
     // 2. Resolve items on Zepto in Parallel
     if (explicitMerchant !== 'swiggy') {
-      const isConstraintApproved = (m: ProductMatchResult) =>
-        (m.status === 'verified_match' || m.status === 'size_mismatch') &&
-        m.brandMatch !== false &&
-        m.inStock &&
-        m.isVerified &&
-        m.costMatch !== false &&
-        m.etaMatch !== false;
-
       const zeptoPromises: Promise<ProductMatchResult>[] = items.map(async (item) => {
         try {
           const q = buildSearchQuery(item);
@@ -787,12 +892,14 @@ export class QuickCommerceMcpManager {
           const fallback: ProductMatchResult = {
             requestedName: item.name,
             requestedBrand: item.brand,
-            requestedQuantity: item.quantity,
+            requestedQuantity: item.requestedQuantity ?? item.quantity,
+            requestedUnit: item.requestedUnit,
             brandMatch: false,
             packageSizeMatch: false,
             isVerified: false,
             inStock: false,
             status: 'missing',
+            matchClassification: 'NO_MATCH',
             notes: err.message,
             rejectionReason: err.message,
           };
@@ -803,69 +910,169 @@ export class QuickCommerceMcpManager {
       const results = await Promise.all(zeptoPromises);
       results.forEach((match) => {
         zeptoMatches.push(match);
-        if (match.matchedItem && isConstraintApproved(match)) {
-          zeptoCartItems.push({ itemId: match.matchedItem.id, quantity: match.requestedQuantity });
+        if (match.matchedItem && isFulfilledMatch(match)) {
+          zeptoCartItems.push({ itemId: match.matchedItem.id, quantity: match.orderQuantity || 1 });
           zeptoResolvedItems.push(match.matchedItem);
         }
       });
     }
 
-    // 3. Assemble proposals for fully fulfilled merchants in parallel
-    // ONLY assemble cart if EVERY single requested item passed all 5 constraints!
-    const isConstraintApproved = (m: ProductMatchResult) =>
-      (m.status === 'verified_match' || m.status === 'size_mismatch') &&
-      m.brandMatch !== false &&
-      m.inStock &&
-      m.isVerified &&
-      m.costMatch !== false &&
-      m.etaMatch !== false;
+    const allSwiggyAcceptable = swiggyCartItems.length === items.length && swiggyMatches.every(isFulfilledMatch);
+    const allZeptoAcceptable = zeptoCartItems.length === items.length && zeptoMatches.every(isFulfilledMatch);
 
-    const allSwiggyAcceptable = swiggyCartItems.length === items.length &&
-                                swiggyMatches.every(isConstraintApproved);
-    const allZeptoAcceptable = zeptoCartItems.length === items.length &&
-                               zeptoMatches.every(isConstraintApproved);
+    // Also support partial fulfillment for multi-item requests when not all items are found
+    const swiggyPartiallyAcceptable = !allSwiggyAcceptable && swiggyCartItems.length > 0;
+    const zeptoPartiallyAcceptable = !allZeptoAcceptable && zeptoCartItems.length > 0;
 
-    const [swiggyProposal, zeptoProposal] = await Promise.all([
-      allSwiggyAcceptable
+    const [rawSwiggyProposal, rawZeptoProposal] = await Promise.all([
+      allSwiggyAcceptable || swiggyPartiallyAcceptable
         ? this.swiggy.createCart(swiggyCartItems, location).catch(() => undefined)
         : undefined,
-      allZeptoAcceptable
+      allZeptoAcceptable || zeptoPartiallyAcceptable
         ? this.zepto.createCart(zeptoCartItems, location).catch(() => undefined)
         : undefined,
     ]);
 
-    const attachConstraintSummary = (proposal: QuickCommerceBasketProposal, matches: ProductMatchResult[]) => {
-      proposal.constraintValidation = {
-        allPassed: true,
-        brandAccepted: matches.every((m) => m.brandMatch),
-        costAccepted: matches.every((m) => m.costMatch !== false),
-        quantityAccepted: matches.every((m) => m.inStock),
-        etaAccepted: matches.every((m) => m.etaMatch !== false),
-        details: matches.map((m) => `${m.requestedName} (${m.matchedItem?.name || 'verified'})`),
+    const buildLiveProposal = (
+      platform: 'zepto' | 'swiggy_instamart',
+      merchantName: string,
+      resolvedItems: QuickCommerceItem[],
+      matches: ProductMatchResult[],
+      rawProposal: QuickCommerceBasketProposal | undefined,
+      delEst?: DeliveryEstimateResult,
+      isPartial: boolean = false
+    ): QuickCommerceBasketProposal => {
+      const isZepto = platform === 'zepto';
+      const basketItems: QuickCommerceBasketItem[] = resolvedItems.map((item, index) => {
+        const match = matches.find((m) => m.matchedItem?.id === item.id) || matches[index];
+        const orderQuantity = match?.orderQuantity || 1;
+        const requestedQuantity = match?.requestedQuantity || (items[index] && items[index].quantity) || 1;
+        const requestedUnit = match?.requestedUnit || (items[index] && items[index].requestedUnit) || 'packet';
+        const unitPriceCents = item.priceCents;
+        const totalPriceCents = match?.totalPriceCents || (orderQuantity * unitPriceCents);
+
+        return {
+          id: item.id,
+          itemId: item.id,
+          name: item.name,
+          platform,
+          merchantName,
+          quantity: orderQuantity,
+          orderQuantity,
+          requestedQuantity,
+          requestedUnit,
+          actualSuppliedQuantity: match?.actualSuppliedQuantity || orderQuantity,
+          actualSuppliedUnit: match?.actualSuppliedUnit || requestedUnit,
+          unitPriceCents,
+          totalPriceCents,
+          mrpCents: item.mrpCents,
+          imageUrl: item.imageUrl,
+          productUrl: item.productUrl,
+          unit: item.unit,
+          brand: item.brand,
+          packSize: item.packSize,
+          packSizeDescription: match?.packSizeDescription || item.unit || item.packSize,
+          matchClassification: match?.matchClassification || 'COMPATIBLE_MATCH',
+          isAlternative: match?.isAlternative || false,
+          discloseSuppliedDiff: match?.discloseSuppliedDiff,
+          disclosureNote: match?.disclosureNote,
+          isPriceVerified: item.isPriceVerified !== false,
+          priceSource: 'mcp_live',
+          priceFetchedAt: item.priceFetchedAt || new Date().toISOString(),
+          inStock: item.inStock !== false,
+        };
+      });
+
+      // Live cart proposal from createCart takes precedence (authoritative cart pricing for this basket),
+      // falling back to real-time location delivery estimate, then platform baseline defaults.
+      const delFeeOverride = typeof rawProposal?.deliveryFeeCents === 'number' && !isNaN(rawProposal.deliveryFeeCents)
+        ? rawProposal.deliveryFeeCents
+        : (typeof delEst?.deliveryFeeCents === 'number' && !isNaN(delEst.deliveryFeeCents) ? delEst.deliveryFeeCents : undefined);
+
+      const freeThresholdOverride = typeof rawProposal?.freeDeliveryThresholdCents === 'number' && !isNaN(rawProposal.freeDeliveryThresholdCents)
+        ? rawProposal.freeDeliveryThresholdCents
+        : (typeof delEst?.freeDeliveryThresholdCents === 'number' && !isNaN(delEst.freeDeliveryThresholdCents) ? delEst.freeDeliveryThresholdCents : undefined);
+
+      const surgeFeeOverride = typeof rawProposal?.surgeFeeCents === 'number' && !isNaN(rawProposal.surgeFeeCents)
+        ? rawProposal.surgeFeeCents
+        : (typeof delEst?.surgeFeeCents === 'number' && !isNaN(delEst.surgeFeeCents) ? delEst.surgeFeeCents : 0);
+
+      const handlingFeeOverride = isZepto
+        ? 0
+        : (typeof rawProposal?.handlingFeeCents === 'number' && !isNaN(rawProposal.handlingFeeCents) ? rawProposal.handlingFeeCents : 300);
+
+      const totals = calculateBasketTotals(basketItems, {
+        platform,
+        customDeliveryFeeCents: delFeeOverride,
+        freeDeliveryThresholdCents: freeThresholdOverride,
+        customHandlingFeeCents: handlingFeeOverride,
+        surgeFeeCents: surgeFeeOverride,
+        discountCents: rawProposal?.discountCents,
+      });
+
+      const cartId = rawProposal?.cartId || `${platform}_cart_${Date.now()}_${Math.random().toString(36).substring(2, 7)}`;
+
+      let orderStatus: OrderFulfillmentStatus = 'VERIFIED';
+      if (isPartial) {
+        orderStatus = 'PARTIALLY_FULFILLED';
+      } else if (matches.some((m) => m.matchClassification === 'ALTERNATIVE')) {
+        orderStatus = 'NEEDS_CONFIRMATION';
+      }
+
+      const missingNames = matches
+        .filter((m) => !isFulfilledMatch(m))
+        .map((m) => m.requestedName);
+
+      return {
+        cartId,
+        platform,
+        merchantName,
+        isAvailable: !isPartial && matches.every((m) => m.inStock),
+        items: basketItems,
+        bestItems: resolvedItems,
+        bestItem: resolvedItems[0],
+        resolvedItemsContext: resolvedItems,
+        subtotalCents: totals.subtotalCents,
+        itemTotalCents: totals.subtotalCents,
+        deliveryFeeCents: totals.deliveryFeeCents,
+        handlingFeeCents: totals.handlingFeeCents,
+        platformFeeCents: totals.handlingFeeCents,
+        taxCents: totals.taxCents,
+        taxesCents: totals.taxCents,
+        discountCents: totals.discountCents,
+        surgeFeeCents: totals.surgeFeeCents,
+        totalAmountCents: totals.totalAmountCents,
+        currency: 'INR',
+        deliveryAddress: location,
+        etaMinutes: delEst?.etaMinutes || rawProposal?.etaMinutes || (isZepto ? 10 : 14),
+        isPriceVerified: true,
+        priceSource: 'mcp_live',
+        priceFreshness: new Date().toISOString(),
+        isEstimate: true,
+        orderStatus,
+        unavailableItems: missingNames.length > 0 ? missingNames : undefined,
+        constraintValidation: {
+          allPassed: !isPartial && orderStatus === 'VERIFIED',
+          orderStatus,
+          brandAccepted: matches.every((m) => m.brandMatch),
+          costAccepted: matches.every((m) => m.costMatch !== false),
+          quantityAccepted: !isPartial && matches.every((m) => m.inStock),
+          etaAccepted: matches.every((m) => m.etaMatch !== false),
+          details: matches.map((m) => `${m.requestedName} (${m.matchedItem?.name || m.status})`),
+          unfulfilledItems: missingNames.length > 0 ? missingNames : undefined,
+        },
       };
     };
 
-    // Attach resolved items context to proposals
-    if (swiggyProposal && swiggyResolvedItems.length > 0) {
-      swiggyProposal.resolvedItemsContext = swiggyResolvedItems;
-      swiggyProposal.bestItem = swiggyResolvedItems[0];
-      swiggyProposal.isPriceVerified = true;
-      swiggyProposal.priceSource = swiggyProposal.priceSource || 'mcp_live';
-      swiggyProposal.priceFreshness = new Date().toISOString();
-      swiggyProposal.isEstimate = true;
-      attachConstraintSummary(swiggyProposal, swiggyMatches);
-    }
+    const swiggyProposal = (allSwiggyAcceptable || swiggyPartiallyAcceptable) && swiggyResolvedItems.length > 0
+      ? buildLiveProposal('swiggy_instamart', 'Swiggy Instamart', swiggyResolvedItems, swiggyMatches, rawSwiggyProposal, swiggyDelEst, swiggyPartiallyAcceptable)
+      : undefined;
 
-    if (zeptoProposal && zeptoResolvedItems.length > 0) {
-      zeptoProposal.resolvedItemsContext = zeptoResolvedItems;
-      zeptoProposal.bestItem = zeptoResolvedItems[0];
-      zeptoProposal.isPriceVerified = true;
-      zeptoProposal.priceSource = zeptoProposal.priceSource || 'mcp_live';
-      zeptoProposal.priceFreshness = new Date().toISOString();
-      zeptoProposal.isEstimate = true;
-      attachConstraintSummary(zeptoProposal, zeptoMatches);
-    }
+    const zeptoProposal = (allZeptoAcceptable || zeptoPartiallyAcceptable) && zeptoResolvedItems.length > 0
+      ? buildLiveProposal('zepto', 'Zepto', zeptoResolvedItems, zeptoMatches, rawZeptoProposal, zeptoDelEst, zeptoPartiallyAcceptable)
+      : undefined;
 
+    // If neither store has any fulfilled or partially fulfilled items, or hard constraint failed for all items
     if (!swiggyProposal && !zeptoProposal) {
       const swiggyIssues = (swiggyMatches || [])
         .filter((m) => m && m.status !== 'verified_match')
@@ -892,7 +1099,9 @@ export class QuickCommerceMcpManager {
     if (explicitMerchant === 'zepto') {
       if (zeptoProposal) {
         recommended = zeptoProposal;
-        reason = 'User explicitly selected Zepto as preferred merchant.';
+        reason = zeptoProposal.orderStatus === 'PARTIALLY_FULFILLED'
+          ? `Partially fulfilled on Zepto (User preferred). Unavailable items: [${(zeptoProposal.unavailableItems || []).join(', ')}].`
+          : 'User explicitly selected Zepto as preferred merchant.';
       } else {
         const missing = (zeptoMatches || []).filter((m) => m && m.status !== 'verified_match').map((m) => m.rejectionReason || m.requestedName);
         recommended = swiggyProposal!;
@@ -901,15 +1110,22 @@ export class QuickCommerceMcpManager {
     } else if (explicitMerchant === 'swiggy') {
       if (swiggyProposal) {
         recommended = swiggyProposal;
-        reason = 'User explicitly selected Swiggy as preferred merchant.';
+        reason = swiggyProposal.orderStatus === 'PARTIALLY_FULFILLED'
+          ? `Partially fulfilled on Swiggy Instamart (User preferred). Unavailable items: [${(swiggyProposal.unavailableItems || []).join(', ')}].`
+          : 'User explicitly selected Swiggy as preferred merchant.';
       } else {
         const missing = (swiggyMatches || []).filter((m) => m && m.status !== 'verified_match').map((m) => m.rejectionReason || m.requestedName);
         recommended = zeptoProposal!;
         reason = `User preferred Swiggy, but Swiggy Instamart dark store cannot fulfill: [${missing.join(', ')}]. Zepto has all items verified at ₹${(zeptoProposal!.totalAmountCents / 100).toFixed(2)}. Explicit user approval required to switch merchants.`;
       }
     } else if (swiggyProposal && zeptoProposal) {
-      // Compare complete basket totals including all fees
-      if (zeptoProposal.totalAmountCents < swiggyProposal.totalAmountCents) {
+      if (zeptoProposal.orderStatus === 'VERIFIED' && swiggyProposal.orderStatus !== 'VERIFIED') {
+        recommended = zeptoProposal;
+        reason = 'Zepto satisfies all requested items and constraints.';
+      } else if (swiggyProposal.orderStatus === 'VERIFIED' && zeptoProposal.orderStatus !== 'VERIFIED') {
+        recommended = swiggyProposal;
+        reason = 'Swiggy Instamart satisfies all requested items and constraints.';
+      } else if (zeptoProposal.totalAmountCents < swiggyProposal.totalAmountCents) {
         recommended = zeptoProposal;
         reason = `Zepto complete order is cheaper (₹${(zeptoProposal.totalAmountCents / 100).toFixed(2)} vs ₹${(swiggyProposal.totalAmountCents / 100).toFixed(2)} on Swiggy, inclusive of delivery and taxes) and delivers in ${zeptoProposal.etaMinutes} mins.`;
       } else if (zeptoProposal.totalAmountCents === swiggyProposal.totalAmountCents) {
@@ -927,7 +1143,9 @@ export class QuickCommerceMcpManager {
       const rejectedIssues = rejectedList
         .filter((m) => m && m.status !== 'verified_match')
         .map((m) => m.rejectionReason || m.requestedName);
-      reason = `Only ${recommended.merchantName} satisfied all requested brand, cost, quantity, and delivery time constraints (${rejectedMerchant} rejected: ${rejectedIssues.join(', ')}).`;
+      reason = recommended.orderStatus === 'PARTIALLY_FULFILLED'
+        ? `Partially fulfilled on ${recommended.merchantName}. Unavailable items: [${(recommended.unavailableItems || []).join(', ')}].`
+        : `Only ${recommended.merchantName} satisfied all requested brand, cost, quantity, and delivery time constraints (${rejectedMerchant} rejected: ${rejectedIssues.join(', ')}).`;
     }
 
     const resolvedItems = recommended.platform === 'zepto' ? zeptoResolvedItems : swiggyResolvedItems;
@@ -977,7 +1195,7 @@ export class QuickCommerceMcpManager {
     }
 
     return {
-      query: items.map((i) => `${i.quantity}x ${i.name}`).join(', '),
+      query: items.map((i) => `${i.requestedQuantity || i.quantity}x ${i.name}`).join(', '),
       swiggyProposal,
       zeptoProposal,
       recommendedProposal: recommended,

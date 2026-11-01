@@ -70,6 +70,38 @@ export interface InventoryCheckResult {
   nextRestockEstimate?: string;
 }
 
+export type MatchClassification = 'EXACT_MATCH' | 'COMPATIBLE_MATCH' | 'ALTERNATIVE' | 'NO_MATCH';
+
+export type OrderFulfillmentStatus = 'VERIFIED' | 'PARTIALLY_FULFILLED' | 'NEEDS_CONFIRMATION' | 'REJECTED';
+
+export interface PackSizePreference {
+  value: number;
+  unit: string;
+}
+
+export interface ShoppingIntentItem {
+  product: string;
+  brand: string | null;
+  requestedQuantity: number;
+  requestedUnit: string;
+  packSizePreference?: PackSizePreference | null;
+  variants?: string[];
+  maxCostCents?: number;
+  maxEtaMinutes?: number;
+  explicitMerchant?: 'swiggy' | 'zepto';
+  rawQuerySegment?: string;
+  isAmbiguous?: boolean;
+  clarificationPrompt?: string;
+}
+
+export interface ShoppingIntent {
+  items: ShoppingIntentItem[];
+  globalBudgetCents?: number;
+  globalMaxEtaMinutes?: number;
+  explicitMerchant?: 'swiggy' | 'zepto';
+  rawQuery: string;
+}
+
 export interface QuickCommerceBasketItem {
   itemId: string;
   name: string;
@@ -85,6 +117,17 @@ export interface QuickCommerceBasketItem {
   priceSource?: 'mcp_live' | 'merchant_confirmed' | 'unavailable';
   priceFetchedAt?: string;
   id?: string;
+  requestedQuantity?: number;
+  requestedUnit?: string;
+  packSizeDescription?: string;
+  orderQuantity?: number;
+  actualSuppliedQuantity?: number;
+  actualSuppliedUnit?: string;
+  matchClassification?: MatchClassification;
+  isAlternative?: boolean;
+  totalPriceCents?: number;
+  discloseSuppliedDiff?: boolean;
+  disclosureNote?: string;
 }
 
 export interface ConstrainedGroceryItem {
@@ -93,6 +136,11 @@ export interface ConstrainedGroceryItem {
   maxCostCents?: number;       // In paise (e.g. 5000 = ₹50.00)
   quantity: number;
   maxEtaMinutes?: number;      // In minutes (e.g. 15)
+  requestedQuantity?: number;
+  requestedUnit?: string;
+  packSizePreference?: PackSizePreference | null;
+  variants?: string[];
+  intentItem?: ShoppingIntentItem;
 }
 
 export interface ConstraintValidationSummary {
@@ -101,7 +149,10 @@ export interface ConstraintValidationSummary {
   costAccepted?: boolean;
   quantityAccepted?: boolean;
   etaAccepted?: boolean;
+  orderStatus?: OrderFulfillmentStatus;
   details?: string[];
+  unfulfilledItems?: string[];
+  alternativeItems?: string[];
 }
 
 export interface ProductMatchResult {
@@ -130,6 +181,17 @@ export interface ProductMatchResult {
     | 'eta_exceeded';
   notes?: string;
   rejectionReason?: string;
+  matchClassification?: MatchClassification;
+  isAlternative?: boolean;
+  alternativeReason?: string;
+  orderQuantity?: number;
+  quantityPerPackage?: number;
+  actualSuppliedQuantity?: number;
+  actualSuppliedUnit?: string;
+  discloseSuppliedDiff?: boolean;
+  disclosureNote?: string;
+  packSizeDescription?: string;
+  totalPriceCents?: number;
 }
 
 export interface QuickCommerceBasketProposal {
@@ -166,6 +228,8 @@ export interface QuickCommerceBasketProposal {
   budgetExceeded?: boolean;
   excessAmountCents?: number;
   constraintValidation?: ConstraintValidationSummary;
+  orderStatus?: OrderFulfillmentStatus;
+  alternativeItems?: QuickCommerceBasketItem[];
   budgetSuggestion?: {
     text: string;
     alternativeProposal?: QuickCommerceBasketProposal;

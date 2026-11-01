@@ -21,3 +21,5 @@ export * from './prava/ap2-bridge.js';
 
 export * from './agent/order-validator.js';
 export * from './agent/runner.js';
+export * from './agent/intent-extractor.js';
+export * from './agent/cart-calculator.js';
