@@ -28,11 +28,20 @@ import { orderValidator } from './order-validator.js';
 import { authProvider, AuthUser } from '../auth/index.js';
 import { spendTracker } from '../db/spend-tracker.js';
 import { getDb } from '../db/client.js';
-import { mandates as schemaMandates, transactions as schemaTransactions } from '../db/schema.js';
+import {
+  agentSessions,
+  auditLog,
+  candidateOptions,
+  intents,
+  mandates as schemaMandates,
+  transactions as schemaTransactions,
+} from '../db/schema.js';
 import { eq, and } from 'drizzle-orm';
 
 export interface AgentSessionState {
   sessionId: string;
+  /** UUID of the durable Neon session record. The public sessionId remains browser-safe. */
+  databaseSessionId?: string;
   user: AuthUser;
   activeDeliveryLocation: DeliveryLocation;
   isLocationConfirmed: boolean;
@@ -86,6 +95,113 @@ export class AutonomousCommerceRunner {
   // Idempotency ledger mapping stable key to immutable execution parameters and result
   private idempotencyLedger: Map<string, IdempotencyRecord> = new Map();
 
+  private isUuid(value: string | undefined): value is string {
+    return Boolean(value && /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(value));
+  }
+
+  /**
+   * Persist a structured audit event without allowing observability failures to
+   * interrupt a shopper's order flow.
+   */
+  private async persistAuditEvent(
+    session: AgentSessionState,
+    eventType: string,
+    metadata: Record<string, unknown> = {}
+  ): Promise<void> {
+    if (!session.databaseSessionId || !this.isUuid(session.user.id)) return;
+
+    const db = getDb();
+    if (!db) return;
+
+    try {
+      await db.insert(auditLog).values({
+        sessionId: session.databaseSessionId,
+        userId: session.user.id,
+        eventType,
+        metadata,
+      });
+    } catch (err: any) {
+      console.warn(`DB audit persistence note (${eventType}):`, err.message);
+    }
+  }
+
+  private async persistTurn(
+    session: AgentSessionState,
+    userQuery: string,
+    comparison: MultiPlatformComparison
+  ): Promise<void> {
+    if (!session.databaseSessionId || !this.isUuid(session.user.id)) return;
+
+    const db = getDb();
+    if (!db) return;
+
+    try {
+      const structuredGoal = extractShoppingIntent(userQuery);
+      await db.insert(intents).values({
+        sessionId: session.databaseSessionId,
+        userId: session.user.id,
+        rawMessage: userQuery,
+        structuredGoal,
+      });
+
+      const proposals = [comparison.swiggyProposal, comparison.zeptoProposal]
+        .filter((proposal): proposal is QuickCommerceBasketProposal => Boolean(proposal));
+      const options = proposals.flatMap((proposal) => proposal.items.map((item, index) => ({
+        sessionId: session.databaseSessionId!,
+        merchantId: proposal.platform,
+        merchantName: proposal.merchantName,
+        itemName: item.name,
+        priceCents: item.unitPriceCents ?? 0,
+        currency: proposal.currency || 'INR',
+        deliveryFeeCents: proposal.deliveryFeeCents ?? 0,
+        etaMinutes: proposal.etaMinutes ?? null,
+        productUrl: item.productUrl ?? null,
+        metadata: {
+          clientSessionId: session.sessionId,
+          cartId: proposal.cartId,
+          quantity: item.quantity,
+          totalPriceCents: item.totalPriceCents,
+          isAvailable: proposal.isAvailable,
+          platform: proposal.platform,
+        },
+        rank: index + 1,
+      })));
+      if (options.length > 0) await db.insert(candidateOptions).values(options);
+
+      await db.update(agentSessions)
+        .set({
+          deliveryLocation: session.activeDeliveryLocation,
+          sessionMetadata: { clientSessionId: session.sessionId, latestQuery: userQuery },
+        })
+        .where(eq(agentSessions.id, session.databaseSessionId));
+    } catch (err: any) {
+      console.warn('DB shopping-turn persistence note:', err.message);
+    }
+  }
+
+  private async persistMandate(session: AgentSessionState, bundle: PendingMandateBundle): Promise<void> {
+    if (!session.databaseSessionId || !this.isUuid(session.user.id)) return;
+
+    const db = getDb();
+    if (!db) return;
+
+    try {
+      await db.insert(schemaMandates).values({
+        userId: session.user.id,
+        sessionId: session.databaseSessionId,
+        mandateId: bundle.mandateId,
+        merchantId: bundle.merchantId,
+        amountCents: bundle.amountCents,
+        currency: bundle.currency || 'INR',
+        status: 'pending',
+        rawMandate: bundle.cartMandate,
+        expiresAt: bundle.expiresAt,
+      }).onConflictDoNothing({ target: schemaMandates.mandateId });
+    } catch (err: any) {
+      console.warn('DB mandate persistence note:', err.message);
+    }
+  }
+
   /**
    * Initialize a new conversational shopping session
    */
@@ -113,7 +229,25 @@ export class AutonomousCommerceRunner {
       auditTrail: [],
     };
 
+    // The public token is intentionally not the database primary key: database
+    // tables require UUID foreign keys, whereas the browser uses `sess_<uuid>`.
+    const db = getDb();
+    if (db && this.isUuid(user.id)) {
+      try {
+        const [storedSession] = await db.insert(agentSessions).values({
+          userId: user.id,
+          status: 'active',
+          deliveryLocation: session.activeDeliveryLocation,
+          sessionMetadata: { clientSessionId: sessionId, locationConfirmed: session.isLocationConfirmed },
+        }).returning({ id: agentSessions.id });
+        session.databaseSessionId = storedSession?.id;
+      } catch (err: any) {
+        console.warn('DB session persistence note:', err.cause?.message || err.message);
+      }
+    }
+
     this.sessions.set(sessionId, session);
+    await this.persistAuditEvent(session, 'session_initialized', { clientSessionId: sessionId });
     return session;
   }
 
@@ -210,6 +344,12 @@ export class AutonomousCommerceRunner {
 
     const bestProposal = comparison.recommendedProposal;
     session.activeProposal = bestProposal;
+    await this.persistTurn(session, userQuery, comparison);
+    await this.persistAuditEvent(session, 'shopping_turn_processed', {
+      clientSessionId: sessionId,
+      selectedPlatform: bestProposal.platform,
+      totalAmountCents: bestProposal.totalAmountCents,
+    });
 
     // 4. Validate order stock, location, and spending limits
     const validation = orderValidator.validatePrePurchase(
@@ -272,6 +412,12 @@ export class AutonomousCommerceRunner {
       session.user.id
     );
     session.pendingMandate = mandateBundle;
+    await this.persistMandate(session, mandateBundle);
+    await this.persistAuditEvent(session, 'mandate_created', {
+      mandateId: mandateBundle.mandateId,
+      amountCents: mandateBundle.amountCents,
+      merchantId: mandateBundle.merchantId,
+    });
 
     // Create alternative platform mandate bundle if both are available, to support instant tab switching!
     let swiggyMandateBundle = bestProposal.platform === 'swiggy_instamart' ? mandateBundle : undefined;
@@ -323,6 +469,16 @@ export class AutonomousCommerceRunner {
     const session = this.sessions.get(sessionId);
     if (!session) {
       throw new Error(`Session not found: ${sessionId}`);
+    }
+
+    // Refresh user profile with latest authoritative limits & settings
+    try {
+      const refreshedUser = await authProvider.getAuthenticatedUser(session.user.id);
+      if (refreshedUser) {
+        session.user = refreshedUser;
+      }
+    } catch {
+      // Keep existing session user if lookup fails
     }
 
     // 0a. Authentication invariant: User cannot order before signing up
@@ -508,7 +664,7 @@ export class AutonomousCommerceRunner {
       session.user.id,
       bundle.amountCents,
       {
-        sessionId: session.sessionId,
+        sessionId: session.databaseSessionId || session.sessionId,
         merchantId: bundle.merchantId,
         merchantOrderId: checkoutResult.orderId,
         pravaTokenRef: tokenResponse.pravaTokenRef,
@@ -518,42 +674,50 @@ export class AutonomousCommerceRunner {
     );
 
     // Persist consumption to database if available
-    if (db) {
-      db.update(schemaMandates)
-        .set({ status: 'consumed', consumedAt: new Date() })
-        .where(eq(schemaMandates.mandateId, mandateId))
-        .catch((dbErr) => console.warn('DB mandate update note:', dbErr.message));
+    if (db && session.databaseSessionId && this.isUuid(session.user.id)) {
+      try {
+        const [dbMandate] = await db.update(schemaMandates)
+          .set({
+            status: 'consumed',
+            consumedAt: new Date(),
+            signedMandate: { mandate: bundle.cartMandate, signature: verification.signature },
+          })
+          .where(eq(schemaMandates.mandateId, mandateId))
+          .returning({ id: schemaMandates.id });
 
-      const isUuid = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(session.user.id);
-      if (isUuid) {
-        db.query.mandates
-          .findFirst({
-            where: eq(schemaMandates.mandateId, mandateId),
-          })
-          .then(async (dbMandate) => {
-            if (dbMandate) {
-              await db.insert(schemaTransactions).values({
-                userId: session.user.id as any,
-                sessionId: session.sessionId as any,
-                mandateId: dbMandate.id,
-                idempotencyKey: idempotencyKey || null,
-                pravaTokenRef: tokenResponse.pravaTokenRef,
-                merchantId: bundle.merchantId,
-                merchantOrderId: checkoutResult.orderId || null,
-                amountCents: bundle.amountCents,
-                currency: bundle.currency || 'INR',
-                status: 'completed',
-                receiptSummary: checkoutResult.receiptSummary || {},
-                completedAt: new Date(),
-              });
-            }
-          })
-          .catch((txErr) => console.warn('Note: DB tx insert:', txErr.message));
+        if (dbMandate) {
+          await db.insert(schemaTransactions).values({
+            userId: session.user.id,
+            sessionId: session.databaseSessionId,
+            mandateId: dbMandate.id,
+            idempotencyKey: idempotencyKey || null,
+            pravaTokenRef: tokenResponse.pravaTokenRef,
+            merchantId: bundle.merchantId,
+            merchantOrderId: checkoutResult.orderId || null,
+            amountCents: bundle.amountCents,
+            currency: bundle.currency || 'INR',
+            status: 'completed',
+            receiptSummary: checkoutResult.receiptSummary || {},
+            completedAt: new Date(),
+          }).onConflictDoNothing({ target: schemaTransactions.mandateId });
+        }
+
+        await db.update(agentSessions)
+          .set({ status: 'completed', completedAt: new Date() })
+          .where(eq(agentSessions.id, session.databaseSessionId));
+      } catch (dbErr: any) {
+        console.warn('DB checkout persistence note:', dbErr.message);
       }
     }
 
     session.consumedMandateId = mandateId;
     session.pendingMandate = undefined;
+    await this.persistAuditEvent(session, 'checkout_completed', {
+      mandateId,
+      transactionId,
+      merchantOrderId: checkoutResult.orderId,
+      amountCents: bundle.amountCents,
+    });
 
     return result;
   }

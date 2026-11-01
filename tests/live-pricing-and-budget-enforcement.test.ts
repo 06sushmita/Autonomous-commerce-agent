@@ -39,7 +39,7 @@ import { createTestSwiggyTransport, createTestZeptoTransport } from './fixtures/
 describe('Live Product Pricing & Daily Budget Enforcement Suite', () => {
   let runner: AutonomousCommerceRunner;
   const originalNodeEnv = process.env.NODE_ENV;
-  const testUserId = ARJUN_USER.id;
+  const testUserId = '00000000-0000-0000-0000-000000000005';
 
   const testLocation: DeliveryLocation = {
     address: 'Flat 402, Green Glen Layout, Bellandur, Bengaluru',
@@ -52,6 +52,12 @@ describe('Live Product Pricing & Daily Budget Enforcement Suite', () => {
     resetPravaClient();
     authProvider.reset();
     authProvider.seedVerifiedClerkProfiles();
+    authProvider.seedUser({
+      ...ARJUN_USER,
+      id: testUserId,
+      email: 'live.pricing.test@example.com',
+      clerkUserId: 'user_live_pricing_test',
+    });
     spendTracker.clear();
 
     // Wire simulated MCP transports with live item catalogs

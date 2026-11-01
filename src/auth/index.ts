@@ -209,9 +209,34 @@ export class AuthProvider {
   public async syncWithClerkAndDb(): Promise<void> {
     const db = getDb();
 
-    // 1. Fetch live DB users
+    // 1. Fetch live DB users and ensure default seed users exist
     if (db) {
       try {
+        const defaultSeeds = [ARJUN_USER, SUSHMITA_USER, SHUBHAM_USER];
+        for (const seed of defaultSeeds) {
+          const exists = await db.query.users.findFirst({
+            where: or(eq(users.id, seed.id), eq(users.clerkUserId, seed.clerkUserId), eq(users.email, seed.email)),
+          });
+          if (!exists) {
+            try {
+              await db.insert(users).values({
+                id: seed.id,
+                clerkUserId: seed.clerkUserId,
+                email: seed.email,
+                displayName: seed.displayName,
+                defaultAddress: seed.defaultAddress,
+                defaultPincode: seed.defaultPincode,
+                defaultLatitude: seed.defaultLatitude,
+                defaultLongitude: seed.defaultLongitude,
+                dailySpendLimitCents: seed.dailySpendLimitCents,
+                pravaAccountId: seed.pravaAccountId,
+              });
+            } catch {
+              // Ignore concurrent insert race
+            }
+          }
+        }
+
         const dbUsers = await db.query.users.findMany();
         for (const u of dbUsers) {
           const authU: AuthUser = {
@@ -658,12 +683,46 @@ export class AuthProvider {
     return user;
   }
 
+  private isUuid(value: string | undefined): value is string {
+    return Boolean(value && /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(value));
+  }
+
   /**
    * Get authenticated user by ID, email, or currently active session
    */
   public async getAuthenticatedUser(userIdOrKey?: string): Promise<AuthUser> {
     if (userIdOrKey) {
-      const found = this.users.get(userIdOrKey) || this.users.get(userIdOrKey.toLowerCase());
+      const keyLower = userIdOrKey.toLowerCase();
+      let found = this.users.get(userIdOrKey) || this.users.get(keyLower);
+      if (!found) {
+        const db = getDb();
+        if (db) {
+          try {
+            const isUid = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(userIdOrKey);
+            const whereClause = isUid
+              ? or(eq(users.id, userIdOrKey), eq(users.clerkUserId, userIdOrKey), eq(users.email, keyLower))
+              : or(eq(users.clerkUserId, userIdOrKey), eq(users.email, keyLower));
+            const dbUser = await db.query.users.findFirst({ where: whereClause });
+            if (dbUser) {
+              found = {
+                id: dbUser.id,
+                clerkUserId: dbUser.clerkUserId,
+                email: dbUser.email,
+                displayName: dbUser.displayName,
+                defaultAddress: dbUser.defaultAddress || 'Flat 402, Green Glen Layout, Bellandur, Bengaluru',
+                defaultPincode: dbUser.defaultPincode || '560103',
+                defaultLatitude: dbUser.defaultLatitude || 12.9298,
+                defaultLongitude: dbUser.defaultLongitude || 77.6835,
+                dailySpendLimitCents: dbUser.dailySpendLimitCents || 500000,
+                pravaAccountId: dbUser.pravaAccountId || undefined,
+              };
+              this.seedUser(found);
+            }
+          } catch (dbErr: any) {
+            console.warn('DB lookup in getAuthenticatedUser note:', dbErr.message);
+          }
+        }
+      }
       if (found) {
         return found;
       }
@@ -700,6 +759,10 @@ export class AuthProvider {
     // Asynchronously update database if configured
     const db = getDb();
     if (db) {
+      const isUid = this.isUuid(user.id);
+      const whereClause = isUid
+        ? or(eq(users.id, user.id), eq(users.clerkUserId, user.clerkUserId))
+        : eq(users.clerkUserId, user.clerkUserId);
       db.update(users)
         .set({
           defaultAddress: address,
@@ -708,7 +771,7 @@ export class AuthProvider {
           defaultLongitude: longitude,
           updatedAt: new Date(),
         })
-        .where(or(eq(users.id, user.id), eq(users.clerkUserId, user.clerkUserId)))
+        .where(whereClause)
         .catch((err) => console.warn('Failed to update user address in Neon DB:', err.message));
     }
 
@@ -734,12 +797,16 @@ export class AuthProvider {
     // Asynchronously update database if configured
     const db = getDb();
     if (db) {
+      const isUid = this.isUuid(user.id);
+      const whereClause = isUid
+        ? or(eq(users.id, user.id), eq(users.clerkUserId, user.clerkUserId))
+        : eq(users.clerkUserId, user.clerkUserId);
       db.update(users)
         .set({
           dailySpendLimitCents: newLimitCents,
           updatedAt: new Date(),
         })
-        .where(or(eq(users.id, user.id), eq(users.clerkUserId, user.clerkUserId)))
+        .where(whereClause)
         .catch((err) => console.warn('Failed to update user spend limit in Neon DB:', err.message));
     }
 

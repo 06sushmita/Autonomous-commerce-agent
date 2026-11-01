@@ -277,6 +277,9 @@ export class QuickCommerceMcpManager {
     const query = (options?.query || '').toLowerCase().trim();
     const targetBrand = options?.targetBrand ? options.targetBrand.toLowerCase() : undefined;
     const maxCost = options?.maxCostCents;
+    const footwearTerms = /\b(?:shoe|shoes|sneaker|sneakers|footwear|sandal|sandals|slipper|slippers|boot|boots)\b/i;
+    const footwearAccessoryTerms = /\b(?:clean(?:ing|er)?|wipe|wipes|polish|lace|laces|deodor(?:ant|izer)|insole|insoles|shoehorn)\b/i;
+    const isFootwearProductQuery = footwearTerms.test(query) && !footwearAccessoryTerms.test(query);
 
     // Extract core tokens for product relevance
     const cleanQuery = query
@@ -301,7 +304,13 @@ export class QuickCommerceMcpManager {
     }
 
     // Sort according to 7-tier constraint hierarchy
-    const sorted = [...uniqueItems].sort((a, b) => {
+    // "shoe cleaning wipes" contains the word shoe, but is an accessory—not a
+    // valid substitute when the customer asks for footwear.
+    const relevantItems = isFootwearProductQuery
+      ? uniqueItems.filter((item) => !footwearAccessoryTerms.test(`${item.name} ${item.category || ''}`))
+      : uniqueItems;
+
+    const sorted = [...relevantItems].sort((a, b) => {
       // 0. Live verification gate (fail-closed, no mock/unverified items)
       const aVerified = a.isPriceVerified !== false && a.priceCents > 0;
       const bVerified = b.isPriceVerified !== false && b.priceCents > 0;
@@ -500,6 +509,11 @@ export class QuickCommerceMcpManager {
   ): ProductMatchResult {
     const requestedLower = requested.name.toLowerCase();
     const requestedUnit = parseAndNormalizeUnit(requested.name);
+    const footwearTerms = /\b(?:shoe|shoes|sneaker|sneakers|footwear|sandal|sandals|slipper|slippers|boot|boots)\b/i;
+    const footwearAccessoryTerms = /\b(?:clean(?:ing|er)?|wipe|wipes|polish|lace|laces|deodor(?:ant|izer)|insole|insoles|shoehorn)\b/i;
+    const isFootwearProductRequest = footwearTerms.test(requestedLower) && !footwearAccessoryTerms.test(requestedLower);
+    const isIncompatibleAccessory = (item: QuickCommerceItem) =>
+      isFootwearProductRequest && footwearAccessoryTerms.test(`${item.name} ${item.category || ''}`);
 
     // Detect requested brand if mentioned in query or explicitly provided
     const knownBrands = [
@@ -592,6 +606,7 @@ export class QuickCommerceMcpManager {
             itemCategoryLower.includes(st)
           );
         });
+        if (isIncompatibleAccessory(item)) coreMatched = false;
         if (coreMatched) {
           score += 200;
         } else {
@@ -704,7 +719,7 @@ export class QuickCommerceMcpManager {
         itemCatLower.includes(tok) ||
         itemCatLower.includes(st)
       );
-    });
+    }) && !isIncompatibleAccessory(bestItem);
 
     let status: ProductMatchResult['status'] = 'verified_match';
     let matchClassification: MatchClassification = 'NO_MATCH';

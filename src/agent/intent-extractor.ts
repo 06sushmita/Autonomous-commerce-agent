@@ -85,6 +85,11 @@ export function extractCostConstraint(text: string): number | undefined {
       return Math.round(parseFloat(valStr) * 100);
     }
   }
+  // Accept the common shorthand "shoes under 600" as an INR constraint.
+  const bareAmountMatch = text.match(/\b(?:under|below|max|within|less than)\s*(\d+(?:\.\d+)?)\b/i);
+  if (bareAmountMatch?.[1]) {
+    return Math.round(parseFloat(bareAmountMatch[1]) * 100);
+  }
   return undefined;
 }
 
@@ -104,6 +109,11 @@ export function extractGlobalCostConstraint(query: string): number | undefined {
   const trailingMatch = query.match(/(?:(?:budget|total|order)\s+)?(?:under|below|max|within|less than)\s*(?:₹|rs\.?|inr)\s*(\d+(?:\.\d+)?)\.?$/i);
   if (trailingMatch) {
     return Math.round(parseFloat(trailingMatch[1]) * 100);
+  }
+
+  const bareTrailingMatch = query.match(/(?:(?:budget|total|order)\s+)?(?:under|below|max|within|less than)\s*(\d+(?:\.\d+)?)\.?$/i);
+  if (bareTrailingMatch?.[1]) {
+    return Math.round(parseFloat(bareTrailingMatch[1]) * 100);
   }
 
   return undefined;
@@ -161,7 +171,7 @@ export function extractShoppingIntent(query: string): ShoppingIntent {
       itemCostCents = globalBudgetCents;
     }
     seg = seg
-      .replace(/(?:under|below|max|within|less than)\s*(?:₹|rs\.?|inr)\s*\d+(?:\.\d+)?/gi, '')
+      .replace(/(?:under|below|max|within|less than)\s*(?:(?:₹|rs\.?|inr)\s*)?\d+(?:\.\d+)?/gi, '')
       .replace(/(?:under|below|max|within|less than)\s*\d+(?:\.\d+)?\s*(?:rs|rupees|inr|bucks)/gi, '')
       .trim();
 
