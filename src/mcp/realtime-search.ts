@@ -26,7 +26,7 @@ export class RealtimeCommerceFetcher {
     location?: DeliveryLocation
   ): Promise<ItemDetails[]> {
     const merchantName = platform === 'zepto' ? 'Zepto' : 'Swiggy Instamart';
-    const siteFilter = platform === 'zepto' ? 'site:zeptonow.com' : 'site:swiggy.com/instamart';
+    const siteFilter = platform === 'zepto' ? 'site:zepto.com' : 'site:swiggy.com/instamart';
 
     // 1. Fetch live search snippets from DuckDuckGo HTML
     const searchUrl = `https://html.duckduckgo.com/html/?q=${encodeURIComponent(
@@ -121,7 +121,7 @@ export class RealtimeCommerceFetcher {
           metadata: { unverifiedWebSnippet: true },
           productUrl:
             platform === 'zepto'
-              ? `https://www.zeptonow.com/search?q=${encodeURIComponent(itemName)}`
+              ? `https://www.zepto.com/search?query=${encodeURIComponent(itemName)}`
               : `https://www.swiggy.com/instamart/search?query=${encodeURIComponent(itemName)}`,
           etaMinutes: platform === 'zepto' ? 10 : 20,
         });

@@ -237,7 +237,7 @@ export class ZeptoMcpClient {
               imageUrl: item.imageUrl || item.image,
               productUrl:
                 item.productUrl ||
-                `https://www.zeptonow.com/search?q=${encodeURIComponent(item.name)}`,
+                `https://www.zepto.com/search?query=${encodeURIComponent(item.name)}`,
               etaMinutes: item.etaMinutes || 10,
               inStock: isVerified && item.inStock !== false,
               isPriceVerified: isVerified,
@@ -607,7 +607,7 @@ export class ZeptoMcpClient {
       success: true,
       platform: 'zepto',
       orderId: String(orderId),
-      trackingUrl: result.trackingUrl || `https://www.zeptonow.com/order/${orderId}`,
+      trackingUrl: result.trackingUrl || `https://www.zepto.com/order/${orderId}`,
       etaMinutes: result.etaMinutes || 10,
       totalChargedCents: result.totalChargedCents || 0,
       currency: 'INR',

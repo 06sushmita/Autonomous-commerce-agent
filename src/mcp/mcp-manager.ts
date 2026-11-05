@@ -673,6 +673,10 @@ export class QuickCommerceMcpManager {
         }
       } else {
         sizeMatched = true;
+        // If no explicit unit requested, discourage miniature samples/sachets (< 250ml) for milk
+        if (itemUnit && itemUnit.type === 'volume' && itemUnit.baseValue < 250 && requestedLower.includes('milk')) {
+          score -= 150;
+        }
       }
 
       // Substring overlap

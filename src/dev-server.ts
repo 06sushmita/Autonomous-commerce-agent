@@ -457,7 +457,7 @@ async function handleRequest(req: http.IncomingMessage, res: http.ServerResponse
         ...item,
         productUrl:
           item.productUrl ||
-          `https://www.zeptonow.com/search?q=${encodeURIComponent(item.name)}`,
+          `https://www.zepto.com/search?query=${encodeURIComponent(item.name)}`,
       }));
 
       // Determine best items (supporting multiple items when query requests 2 or more items!)
@@ -474,7 +474,7 @@ async function handleRequest(req: http.IncomingMessage, res: http.ServerResponse
               mrpCents: it.mrpCents,
               imageUrl: it.imageUrl,
               productUrl: it.productUrl || (turn.proposal.platform === 'zepto'
-                ? `https://www.zeptonow.com/search?q=${encodeURIComponent(it.name)}`
+                ? `https://www.zepto.com/search?query=${encodeURIComponent(it.name)}`
                 : `https://www.swiggy.com/instamart/search?query=${encodeURIComponent(it.name)}`),
               unit: it.unit,
               brand: it.brand,
@@ -496,7 +496,7 @@ async function handleRequest(req: http.IncomingMessage, res: http.ServerResponse
         if (!it.productUrl) {
           it.productUrl =
             it.platform === 'zepto'
-              ? `https://www.zeptonow.com/search?q=${encodeURIComponent(it.name)}`
+              ? `https://www.zepto.com/search?query=${encodeURIComponent(it.name)}`
               : `https://www.swiggy.com/instamart/search?query=${encodeURIComponent(it.name)}`;
         }
       });

@@ -2246,15 +2246,58 @@ export function renderWebDashboard(): string {
       if (!zItem && !sItem) return '';
       let html = '<div class="item-platform-chips" style="display:flex; flex-wrap:wrap; gap:8px; margin-top:8px;">';
 
+      function extractBaseQty(item) {
+        if (!item) return null;
+        const text = (item.unit || item.packSize || item.packSizeDescription || item.name || '').toLowerCase();
+        const lMatch = text.match(/(\d+(?:\.\d+)?)\s*(?:l|ltr|litre|liter)/);
+        if (lMatch) return { type: 'vol', val: parseFloat(lMatch[1]) * 1000 };
+        const mlMatch = text.match(/(\d+(?:\.\d+)?)\s*ml/);
+        if (mlMatch) return { type: 'vol', val: parseFloat(mlMatch[1]) };
+        const kgMatch = text.match(/(\d+(?:\.\d+)?)\s*kg/);
+        if (kgMatch) return { type: 'wt', val: parseFloat(kgMatch[1]) * 1000 };
+        const gMatch = text.match(/(\d+(?:\.\d+)?)\s*(?:g|gm|gram)/);
+        if (gMatch) return { type: 'wt', val: parseFloat(gMatch[1]) };
+        const pcMatch = text.match(/(\d+)\s*(?:pcs|pieces?|eggs?|count)/);
+        if (pcMatch) return { type: 'ct', val: parseInt(pcMatch[1], 10) };
+        return null;
+      }
+
+      const zQty = extractBaseQty(zItem);
+      const sQty = extractBaseQty(sItem);
+
+      let zIsCheaper = false;
+      let sIsCheaper = false;
+      let zIsSmallerPack = false;
+      let sIsSmallerPack = false;
+
+      if (zItem && sItem && zItem.priceCents > 0 && sItem.priceCents > 0) {
+        if (zQty && sQty && zQty.type === sQty.type) {
+          const zUnitPrice = zItem.priceCents / zQty.val;
+          const sUnitPrice = sItem.priceCents / sQty.val;
+          if (zQty.val < sQty.val * 0.7) zIsSmallerPack = true;
+          if (sQty.val < zQty.val * 0.7) sIsSmallerPack = true;
+          if (zUnitPrice < sUnitPrice * 0.98 && !zIsSmallerPack) {
+            zIsCheaper = true;
+          } else if (sUnitPrice < zUnitPrice * 0.98 && !sIsSmallerPack) {
+            sIsCheaper = true;
+          }
+        } else {
+          zIsCheaper = zItem.priceCents < sItem.priceCents;
+          sIsCheaper = sItem.priceCents < zItem.priceCents;
+        }
+      }
+
       if (zItem) {
         const zPrice = (zItem.priceCents / 100).toFixed(2);
-        const zUrl = zItem.productUrl || ('https://www.zeptonow.com/search?q=' + encodeURIComponent(zItem.name));
-        const isCheaper = sItem && zItem.priceCents <= sItem.priceCents;
-        html += '<span class="item-platform-chip" style="display:inline-flex; align-items:center; gap:6px; padding:4px 10px; border-radius:6px; font-size:12px; border:1px solid ' + (isCheaper ? '#A7F3D0' : '#E2E8F0') + '; background:' + (isCheaper ? '#F0FDF4' : '#F8FAFC') + ';">';
+        const zPack = zItem.unit || zItem.packSize || zItem.packSizeDescription || '';
+        const zUrl = zItem.productUrl || ('https://www.zepto.com/search?query=' + encodeURIComponent(zItem.name));
+        html += '<span class="item-platform-chip" style="display:inline-flex; align-items:center; gap:6px; padding:4px 10px; border-radius:6px; font-size:12px; border:1px solid ' + (zIsCheaper ? '#A7F3D0' : '#E2E8F0') + '; background:' + (zIsCheaper ? '#F0FDF4' : '#F8FAFC') + ';">';
         html += '<span style="font-weight:700; color:#6D28D9;">⚡ Zepto:</span>';
-        html += '<span style="font-weight:800; color:var(--text);">₹' + zPrice + '</span>';
-        if (isCheaper && sItem && zItem.priceCents < sItem.priceCents) {
+        html += '<span style="font-weight:800; color:var(--text);">₹' + zPrice + (zPack ? (' <span style="font-weight:500; font-size:11px; color:var(--text-muted);">(' + escapeHtml(zPack) + ')</span>') : '') + '</span>';
+        if (zIsCheaper) {
           html += '<span style="background:#ECFDF5; color:#047857; font-size:10px; font-weight:700; padding:1px 6px; border-radius:4px;">✓ Cheaper</span>';
+        } else if (zIsSmallerPack) {
+          html += '<span style="background:#FFFBEB; color:#B45309; font-size:10px; font-weight:600; padding:1px 6px; border-radius:4px;">Smaller Pack</span>';
         }
         html += '<a href="' + zUrl + '" target="_blank" rel="noopener noreferrer" style="color:#6D28D9; font-weight:600; text-decoration:underline; font-size:11px; margin-left:2px;">View ↗</a>';
         html += '</span>';
@@ -2262,13 +2305,15 @@ export function renderWebDashboard(): string {
 
       if (sItem) {
         const sPrice = (sItem.priceCents / 100).toFixed(2);
+        const sPack = sItem.unit || sItem.packSize || sItem.packSizeDescription || '';
         const sUrl = sItem.productUrl || ('https://www.swiggy.com/instamart/search?query=' + encodeURIComponent(sItem.name));
-        const isCheaper = zItem && sItem.priceCents <= zItem.priceCents;
-        html += '<span class="item-platform-chip" style="display:inline-flex; align-items:center; gap:6px; padding:4px 10px; border-radius:6px; font-size:12px; border:1px solid ' + (isCheaper ? '#A7F3D0' : '#FED7AA') + '; background:' + (isCheaper ? '#F0FDF4' : '#FFF7ED') + ';">';
+        html += '<span class="item-platform-chip" style="display:inline-flex; align-items:center; gap:6px; padding:4px 10px; border-radius:6px; font-size:12px; border:1px solid ' + (sIsCheaper ? '#A7F3D0' : '#FED7AA') + '; background:' + (sIsCheaper ? '#F0FDF4' : '#FFF7ED') + ';">';
         html += '<span style="font-weight:700; color:#C2410C;">🥫 Swiggy:</span>';
-        html += '<span style="font-weight:800; color:var(--text);">₹' + sPrice + '</span>';
-        if (isCheaper && zItem && sItem.priceCents < zItem.priceCents) {
+        html += '<span style="font-weight:800; color:var(--text);">₹' + sPrice + (sPack ? (' <span style="font-weight:500; font-size:11px; color:var(--text-muted);">(' + escapeHtml(sPack) + ')</span>') : '') + '</span>';
+        if (sIsCheaper) {
           html += '<span style="background:#ECFDF5; color:#047857; font-size:10px; font-weight:700; padding:1px 6px; border-radius:4px;">✓ Cheaper</span>';
+        } else if (sIsSmallerPack) {
+          html += '<span style="background:#FFFBEB; color:#B45309; font-size:10px; font-weight:600; padding:1px 6px; border-radius:4px;">Smaller Pack</span>';
         }
         html += '<a href="' + sUrl + '" target="_blank" rel="noopener noreferrer" style="color:#C2410C; font-weight:600; text-decoration:underline; font-size:11px; margin-left:2px;">View ↗</a>';
         html += '</span>';
@@ -2550,7 +2595,7 @@ export function renderWebDashboard(): string {
             : null;
           const pUrl = item.productUrl || (isSwiggy
             ? 'https://www.swiggy.com/instamart/search?query=' + encodeURIComponent(item.name)
-            : 'https://www.zeptonow.com/search?q=' + encodeURIComponent(item.name));
+            : 'https://www.zepto.com/search?query=' + encodeURIComponent(item.name));
           const isButter = item.name.toLowerCase().includes('butter');
           const isEgg = item.name.toLowerCase().includes('egg');
           const icon = isButter ? '🧈' : (isEgg ? '🥚' : (isSwiggy ? '🥫' : '⚡'));
@@ -2697,7 +2742,7 @@ export function renderWebDashboard(): string {
         const eta = best.etaMinutes || prop.etaMinutes || (isSwiggy ? 14 : 10);
         const productUrl = best.productUrl || (isSwiggy
           ? 'https://www.swiggy.com/instamart/search?query=' + encodeURIComponent(best.name)
-          : 'https://www.zeptonow.com/search?q=' + encodeURIComponent(best.name));
+          : 'https://www.zepto.com/search?query=' + encodeURIComponent(best.name));
 
         const zItem = zeptoProp && (zeptoProp.bestItem || (zeptoProp.bestItems && zeptoProp.bestItems[0]));
         const sItem = swiggyProp && (swiggyProp.bestItem || (swiggyProp.bestItems && swiggyProp.bestItems[0]));
@@ -2852,7 +2897,7 @@ export function renderWebDashboard(): string {
             : null;
           const pUrl = item.productUrl || (isSwiggy
             ? 'https://www.swiggy.com/instamart/search?query=' + encodeURIComponent(item.name)
-            : 'https://www.zeptonow.com/search?q=' + encodeURIComponent(item.name));
+            : 'https://www.zepto.com/search?query=' + encodeURIComponent(item.name));
           const isCurrentBest = best && (best.id === item.id || best.name === item.name);
 
           html += '<div class="product-card' + (isCurrentBest ? ' card-active-best' : '') + '" id="prodCard_' + data.sessionId + '_' + idx + '">';
