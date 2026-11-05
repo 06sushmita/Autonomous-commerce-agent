@@ -48,6 +48,9 @@ pnpm-debug.log*
 .DS_Store
 Thumbs.db
 
+# Vercel
+.vercel
+
 # IDE and Editor configurations
 .vscode/
 .idea/

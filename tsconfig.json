@@ -13,6 +13,6 @@
     "declaration": true,
     "resolveJsonModule": true
   },
-  "include": ["src/**/*", "lib/**/*", "tests/**/*"],
+  "include": ["src/**/*", "lib/**/*", "tests/**/*", "api/**/*"],
   "exclude": ["node_modules", "dist"]
 }

@@ -53,7 +53,7 @@ function lookupCoordinatesForPincode(pincode: string, addressText?: string): { l
 
 const PORT = process.env.PORT ? parseInt(process.env.PORT, 10) : 3000;
 
-async function handleRequest(req: http.IncomingMessage, res: http.ServerResponse): Promise<void> {
+export async function handleRequest(req: http.IncomingMessage, res: http.ServerResponse): Promise<void> {
   const url = new URL(req.url || '/', `http://${req.headers.host || 'localhost'}`);
   const method = req.method || 'GET';
 
