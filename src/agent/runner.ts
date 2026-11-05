@@ -487,7 +487,13 @@ export class AutonomousCommerceRunner {
     }
 
     // 0b. Cross-user authorization check
-    if (requestingUserId && session.user.id !== requestingUserId && session.user.clerkUserId !== requestingUserId) {
+    // Allow match on UUID id, Clerk user ID, or email — the frontend may send any of these
+    if (
+      requestingUserId &&
+      session.user.id !== requestingUserId &&
+      session.user.clerkUserId !== requestingUserId &&
+      session.user.email?.toLowerCase() !== requestingUserId.toLowerCase()
+    ) {
       throw new Error('Forbidden: Session does not belong to the requesting user.');
     }
 
@@ -717,6 +723,196 @@ export class AutonomousCommerceRunner {
       transactionId,
       merchantOrderId: checkoutResult.orderId,
       amountCents: bundle.amountCents,
+    });
+
+    return result;
+  }
+
+  /**
+   * Execute Prava v1 Order:
+   * Polls Prava payment-result for minted virtual credentials / token,
+   * executes merchant checkout via MCP, and reports transaction status to Prava.
+   */
+  public async executePravaOrderCheckout(
+    sessionId: string,
+    pravaSessionId: string,
+    mandateId: string,
+    requestingUserId?: string
+  ): Promise<CheckoutExecutionResult & { txnRefId: string; pravaCardId?: string }> {
+    const session = this.sessions.get(sessionId);
+    if (!session) {
+      throw new Error(`Session not found: ${sessionId}`);
+    }
+
+    try {
+      const refreshedUser = await authProvider.getAuthenticatedUser(session.user.id);
+      if (refreshedUser) {
+        session.user = refreshedUser;
+      }
+    } catch {
+      // Keep existing user if lookup fails
+    }
+
+    if (!session.user || session.user.id === 'guest' || session.user.id === 'unauthenticated') {
+      throw new Error('Authentication Required: User must be signed up and authenticated to execute checkout.');
+    }
+
+    if (
+      requestingUserId &&
+      session.user.id !== requestingUserId &&
+      session.user.clerkUserId !== requestingUserId &&
+      session.user.email?.toLowerCase() !== requestingUserId.toLowerCase()
+    ) {
+      throw new Error('Forbidden: Session does not belong to the requesting user.');
+    }
+
+    if (
+      this.consumedMandates.has(mandateId) ||
+      this.inFlightClaims.has(mandateId) ||
+      this.transactionLedger.has(mandateId)
+    ) {
+      throw new Error(
+        `Financial safety violation: Mandate ${mandateId} has already been consumed and cannot be reused.`
+      );
+    }
+
+    this.inFlightClaims.add(mandateId);
+
+    const bundle = session.pendingMandate;
+    if (!bundle || bundle.mandateId !== mandateId) {
+      this.inFlightClaims.delete(mandateId);
+      throw new Error(`Invalid or missing mandate: ${mandateId}`);
+    }
+
+    // Expiration check (10-minute window)
+    if (new Date() > bundle.expiresAt) {
+      this.inFlightClaims.delete(mandateId);
+      throw new Error('Biometric approval window has expired (10-minute limit). Please request a fresh proposal.');
+    }
+
+    // Reserve spend allowance
+    const spendReservation = await spendTracker.reserveSpendAsync(
+      session.user.id,
+      bundle.amountCents,
+      mandateId,
+      session.user.dailySpendLimitCents
+    );
+    if (!spendReservation.allowed) {
+      this.inFlightClaims.delete(mandateId);
+      throw new Error(spendReservation.reason || 'Daily spend limit exceeded.');
+    }
+
+    let credentials: any;
+    try {
+      // 1. Poll Prava payment result (retrieves minted virtual card / token)
+      credentials = await getPravaClient().pollPravaPaymentResult(pravaSessionId);
+    } catch (pollErr: any) {
+      this.inFlightClaims.delete(mandateId);
+      await spendTracker.releaseReservationAsync(mandateId, 'prava_poll_failed');
+      throw pollErr;
+    }
+
+    // 2. Execute platform checkout via MCP
+    const platform = bundle.merchantId === 'swiggy' ? 'swiggy_instamart' : 'zepto';
+    let checkoutResult: any;
+    try {
+      checkoutResult = await quickCommerceMcpManager.executePlatformCheckout(
+        platform,
+        session.activeProposal!.cartId,
+        credentials.token
+      );
+    } catch (checkoutErr: any) {
+      this.inFlightClaims.delete(mandateId);
+      await spendTracker.releaseReservationAsync(mandateId, 'merchant_checkout_failed');
+      // Report DECLINED to Prava to close transaction loop
+      await getPravaClient().reportPravaTransactionStatus(pravaSessionId, credentials.txnRefId, 'DECLINED').catch(() => {});
+      throw checkoutErr;
+    }
+
+    if (!checkoutResult.success) {
+      this.inFlightClaims.delete(mandateId);
+      await spendTracker.releaseReservationAsync(mandateId, 'merchant_checkout_unsuccessful');
+      await getPravaClient().reportPravaTransactionStatus(pravaSessionId, credentials.txnRefId, 'DECLINED').catch(() => {});
+      throw new Error(`Checkout failed at merchant ${platform}`);
+    }
+
+    // 3. Report APPROVED to Prava to finalize session
+    await getPravaClient().reportPravaTransactionStatus(pravaSessionId, credentials.txnRefId, 'APPROVED').catch(() => {});
+
+    // 4. Atomic transaction settlement
+    const transactionId = `tx_${crypto.randomUUID()}`;
+    this.consumedMandates.add(mandateId);
+    this.inFlightClaims.delete(mandateId);
+
+    const result = {
+      success: true,
+      order: checkoutResult,
+      mandateId,
+      transactionId,
+      pravaTokenRef: credentials.token,
+      txnRefId: credentials.txnRefId,
+      pravaCardId: credentials.cardId,
+    };
+
+    this.transactionLedger.set(mandateId, result as any);
+
+    await spendTracker.commitReservationAsync(
+      mandateId,
+      session.user.id,
+      bundle.amountCents,
+      {
+        sessionId: session.databaseSessionId || session.sessionId,
+        merchantId: bundle.merchantId,
+        merchantOrderId: checkoutResult.orderId,
+        pravaTokenRef: credentials.token,
+        receiptSummary: checkoutResult.receiptSummary,
+      }
+    );
+
+    const db = getDb();
+    if (db && session.databaseSessionId && this.isUuid(session.user.id)) {
+      try {
+        const [dbMandate] = await db.update(schemaMandates)
+          .set({
+            status: 'consumed',
+            consumedAt: new Date(),
+          })
+          .where(eq(schemaMandates.mandateId, mandateId))
+          .returning({ id: schemaMandates.id });
+
+        if (dbMandate) {
+          await db.insert(schemaTransactions).values({
+            userId: session.user.id,
+            sessionId: session.databaseSessionId,
+            mandateId: dbMandate.id,
+            pravaTokenRef: credentials.token,
+            merchantId: bundle.merchantId,
+            merchantOrderId: checkoutResult.orderId || null,
+            amountCents: bundle.amountCents,
+            currency: bundle.currency || 'INR',
+            status: 'completed',
+            receiptSummary: checkoutResult.receiptSummary || {},
+            completedAt: new Date(),
+          }).onConflictDoNothing({ target: schemaTransactions.mandateId });
+        }
+
+        await db.update(agentSessions)
+          .set({ status: 'completed', completedAt: new Date() })
+          .where(eq(agentSessions.id, session.databaseSessionId));
+      } catch (dbErr: any) {
+        console.warn('DB Prava checkout persistence note:', dbErr.message);
+      }
+    }
+
+    session.consumedMandateId = mandateId;
+    session.pendingMandate = undefined;
+    await this.persistAuditEvent(session, 'checkout_completed', {
+      mandateId,
+      transactionId,
+      merchantOrderId: checkoutResult.orderId,
+      amountCents: bundle.amountCents,
+      pravaSessionId,
+      txnRefId: credentials.txnRefId,
     });
 
     return result;

@@ -10,6 +10,8 @@
  */
 
 import http from 'node:http';
+import fs from 'node:fs';
+import path from 'node:path';
 import dotenv from 'dotenv';
 dotenv.config({ path: '.env.local' });
 
@@ -24,6 +26,7 @@ import {
   AuthUser,
   QuickCommerceItem,
   geocodeAddress,
+  getPravaClient,
 } from './index.js';
 import { renderWebDashboard } from './dashboard-html.js';
 import { renderLandingPage } from './landing-html.js';
@@ -637,8 +640,11 @@ async function handleRequest(req: http.IncomingMessage, res: http.ServerResponse
           user.id
         );
 
+        const spend = spendTracker.getUserSpendProfile(user.id, user.dailySpendLimitCents);
         return sendJson(200, {
           ...result,
+          remainingSpendINR: (spend.remainingDailySpendCents / 100).toFixed(2),
+          spentLast24hINR: (spend.rolling24hSpentCents / 100).toFixed(2),
           orderedFor: {
             name: user.displayName,
             phone: user.phone,
@@ -666,6 +672,166 @@ async function handleRequest(req: http.IncomingMessage, res: http.ServerResponse
             success: false,
             error: msg,
             code: 'MANDATE_ALREADY_CONSUMED',
+          });
+        }
+        return sendJson(400, {
+          success: false,
+          error: msg,
+        });
+      }
+    }
+
+    // 9b. Serve Prava SDK Client Script
+    if (method === 'GET' && url.pathname === '/prava-sdk.js') {
+      try {
+        const sdkPath = path.resolve('node_modules/@prava-sdk/core/dist/index.js');
+        if (fs.existsSync(sdkPath)) {
+          const content = fs.readFileSync(sdkPath, 'utf8');
+          res.writeHead(200, {
+            'Content-Type': 'application/javascript; charset=utf-8',
+            'Cache-Control': 'public, max-age=3600',
+          });
+          res.end(content);
+          return;
+        }
+      } catch (e: any) {
+        console.warn('Could not serve /prava-sdk.js from node_modules:', e.message);
+      }
+      sendJson(404, { error: 'Prava SDK bundle not found' });
+      return;
+    }
+
+    // 9c. Prava v1: Create Session Endpoint
+    if (method === 'POST' && url.pathname === '/api/prava/create-session') {
+      const body = await readJson();
+      const rawPayload = body.cartPayload || body;
+      const userId = rawPayload.userId || body.userId;
+
+      if (!userId || userId === 'guest') {
+        return sendJson(401, {
+          error: 'Authentication Required: Please sign in or create an account to start Prava checkout.',
+          requiresAuth: true,
+          requiresSignup: true,
+        });
+      }
+
+      let user: AuthUser;
+      try {
+        user = await authProvider.getAuthenticatedUser(userId);
+      } catch (err: any) {
+        return sendJson(401, {
+          error: `Authentication Required: ${err.message || 'Please sign in or create an account first.'}`,
+          requiresAuth: true,
+        });
+      }
+
+      try {
+        const merchantName = (rawPayload.merchantName || 'Zepto').includes('swiggy') ? 'Swiggy' : 'Zepto';
+        const totalAmount = rawPayload.totalAmount || (rawPayload.totalAmountCents ? rawPayload.totalAmountCents / 100 : 29.26);
+
+        const pravaPayload = {
+          orderId: rawPayload.orderId,
+          userId: user.id,
+          userEmail: user.email || 'customer@example.com',
+          merchantName: merchantName as 'Swiggy' | 'Zepto',
+          totalAmount: typeof totalAmount === 'number' ? totalAmount : parseFloat(totalAmount),
+          totalAmountCents: rawPayload.totalAmountCents || Math.round(Number(totalAmount) * 100),
+          currency: rawPayload.currency || 'INR',
+          mcpCartId: rawPayload.mcpCartId || `cart_${Date.now()}`,
+          items: rawPayload.items || [
+            {
+              name: rawPayload.itemName || 'Quick Commerce Item',
+              quantity: rawPayload.quantity || 1,
+              price: typeof totalAmount === 'number' ? totalAmount : parseFloat(totalAmount),
+            },
+          ],
+        };
+
+        const sessionRes = await getPravaClient().createPravaSession(pravaPayload);
+        const publishableKey =
+          process.env.NEXT_PUBLIC_PRAVA_CLIENT_KEY ||
+          process.env.PRAVA_CLIENT_KEY ||
+          getPravaClient().getPublishableKey() ||
+          'pk_test_NWYJLkIIGe0clWjBzUwiB9EYyHeE-5UOo_jKapZf5EE';
+
+        return sendJson(200, {
+          success: true,
+          sessionId: sessionRes.session_id,
+          sessionToken: sessionRes.session_token,
+          iframeUrl: sessionRes.iframe_url,
+          orderId: sessionRes.order_id,
+          expiresAt: sessionRes.expires_at,
+          publishableKey,
+        });
+      } catch (err: any) {
+        console.error('Prava session creation error:', err);
+        return sendJson(500, {
+          success: false,
+          error: err.message || 'Failed to create Prava checkout session',
+        });
+      }
+    }
+
+    // 9d. Prava v1: Execute Order & Settle Status
+    if (method === 'POST' && url.pathname === '/api/prava/execute-order') {
+      const body = await readJson();
+      const { sessionId, pravaSessionId, mandateId, userId } = body;
+
+      if (!userId || userId === 'guest') {
+        return sendJson(401, {
+          error: 'Authentication Required: Please sign in or create an account to authorize orders.',
+          requiresAuth: true,
+        });
+      }
+
+      if (!sessionId || !pravaSessionId || !mandateId) {
+        return sendJson(400, {
+          error: 'Missing required parameters: sessionId, pravaSessionId, and mandateId are required.',
+        });
+      }
+
+      let user: AuthUser;
+      try {
+        user = await authProvider.getAuthenticatedUser(userId);
+      } catch (err: any) {
+        return sendJson(401, {
+          error: `Authentication Required: ${err.message || 'User not found.'}`,
+          requiresAuth: true,
+        });
+      }
+
+      try {
+        const result = await autonomousCommerceRunner.executePravaOrderCheckout(
+          sessionId,
+          pravaSessionId,
+          mandateId,
+          user.id
+        );
+
+        const spend = spendTracker.getUserSpendProfile(user.id, user.dailySpendLimitCents);
+        return sendJson(200, {
+          ...result,
+          remainingSpendINR: (spend.remainingDailySpendCents / 100).toFixed(2),
+          spentLast24hINR: (spend.rolling24hSpentCents / 100).toFixed(2),
+          orderedFor: {
+            name: user.displayName,
+            phone: user.phone,
+            address: user.defaultAddress,
+            pincode: user.defaultPincode,
+          },
+        });
+      } catch (checkoutErr: any) {
+        console.error('Prava order execution error:', checkoutErr);
+        const msg = checkoutErr.message || 'Prava order execution failed';
+        if (
+          msg.includes('Daily spend limit') ||
+          msg.includes('Daily budget') ||
+          msg.includes('limit exceeded')
+        ) {
+          return sendJson(422, {
+            success: false,
+            error: msg,
+            code: 'DAILY_BUDGET_EXCEEDED',
           });
         }
         return sendJson(400, {

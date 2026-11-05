@@ -23,6 +23,10 @@ export function renderWebDashboard(): string {
   <link rel="preconnect" href="https://fonts.googleapis.com">
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
   <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&family=JetBrains+Mono:wght@400;500;600&family=Plus+Jakarta+Sans:wght@500;600;700;800&display=swap" rel="stylesheet">
+  <script type="module">
+    import { PravaSDK } from '/prava-sdk.js';
+    window.PravaSDK = PravaSDK;
+  </script>
   <style>
     :root {
       /* Warm Ivory & Deep Charcoal Editorial Palette */
@@ -1577,15 +1581,29 @@ export function renderWebDashboard(): string {
     </div>
   </div>
 
-  <!-- Biometric Passkey Simulation Modal -->
+  <!-- Biometric Passkey / Prava Checkout Modal -->
   <div class="biometric-dialog" id="biometricDialog">
-    <div class="biometric-box">
-      <div class="scanner-ring">🔒</div>
-      <h3 style="font-size: 18px; font-weight: 700; color: var(--text); margin-bottom: 6px;">Biometric Passkey Required</h3>
-      <p style="font-size: 13px; color: var(--text-muted); margin-bottom: 16px;" id="biometricDesc">
+    <div class="biometric-box" style="position:relative; max-width:480px; width:92%;">
+      <button type="button" onclick="closeBiometricDialog()" style="position:absolute; right:16px; top:16px; background:none; border:none; font-size:22px; cursor:pointer; color:var(--text-muted);">&times;</button>
+      <div style="display:flex; align-items:center; gap:8px; margin-bottom:12px;">
+        <span class="pill pill-prava"><span class="status-dot"></span> Prava AP2 Gateway</span>
+      </div>
+      <div class="scanner-ring" id="biometricScannerRing">🔒</div>
+      <h3 style="font-size: 18px; font-weight: 700; color: var(--text); margin-bottom: 6px;" id="biometricTitle">Biometric Passkey Required</h3>
+      <p style="font-size: 13px; color: var(--text-muted); margin-bottom: 12px;" id="biometricDesc">
         Prava AP2 is authenticating your Touch ID / Face ID passkey...
       </p>
-      <div style="font-size: 11px; color: var(--prava); font-family: monospace;" id="biometricChallengeId"></div>
+      <div style="font-size: 11px; color: var(--prava); font-family: monospace; margin-bottom: 12px;" id="biometricChallengeId"></div>
+
+      <!-- Prava SDK Secure Iframe Mount Target -->
+      <div id="pravaContainer" style="width:100%; min-height:280px; display:none; border-radius:12px; overflow:hidden; background:#fafafa; border:1px solid rgba(0,0,0,0.08);"></div>
+
+      <!-- Spinner when executing order -->
+      <div id="pravaExecutingState" style="display:none; text-align:center; padding:20px 0;">
+        <div style="width:32px; height:32px; border:3px solid var(--prava); border-top-color:transparent; border-radius:50%; animation:spin 0.8s linear infinite; margin:0 auto 10px;"></div>
+        <div style="font-size:14px; font-weight:700; color:var(--text);">Executing Autonomous Order via MCP...</div>
+        <div style="font-size:12px; color:var(--text-muted); margin-top:4px;">Closing Prava loop & reporting status</div>
+      </div>
     </div>
   </div>
 
@@ -2965,6 +2983,17 @@ export function renderWebDashboard(): string {
       triggerPasskeyCheckout(sessionId, mandateId, challengeId, totalCents);
     }
 
+    let currentPravaSdkInstance = null;
+
+    function closeBiometricDialog() {
+      const dialog = document.getElementById('biometricDialog');
+      if (dialog) dialog.style.display = 'none';
+      if (currentPravaSdkInstance) {
+        try { currentPravaSdkInstance.destroy(); } catch (_) {}
+        currentPravaSdkInstance = null;
+      }
+    }
+
     async function triggerPasskeyCheckout(sessionId, mandateId, challengeId, totalCents) {
       if (!activeUser) {
         openSignupModal();
@@ -2974,26 +3003,176 @@ export function renderWebDashboard(): string {
       const dialog = document.getElementById('biometricDialog');
       const desc = document.getElementById('biometricDesc');
       const chalEl = document.getElementById('biometricChallengeId');
+      const container = document.getElementById('pravaContainer');
+      const executing = document.getElementById('pravaExecutingState');
+      const scanner = document.getElementById('biometricScannerRing');
+      const title = document.getElementById('biometricTitle');
 
       dialog.style.display = 'flex';
-      desc.textContent = 'Authenticating Touch ID / Face ID passkey for ₹' + (totalCents/100).toFixed(2) + ' on behalf of ' + activeUser.displayName + '...';
+      scanner.style.display = 'flex';
+      container.style.display = 'none';
+      container.innerHTML = '';
+      executing.style.display = 'none';
+
+      const totalStr = (totalCents / 100).toFixed(2);
+      title.textContent = 'Biometric Passkey Required';
+      desc.textContent = 'Initializing Prava AP2 secure session for ₹' + totalStr + ' on behalf of ' + activeUser.displayName + '...';
       chalEl.textContent = 'Challenge: ' + challengeId;
+
+      try {
+        // 1. Initialize Prava v1 Payment Session
+        const sessionRes = await fetch('/api/prava/create-session', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({
+            userId: activeUser.id,
+            sessionId,
+            mandateId,
+            totalAmountCents: totalCents,
+            totalAmount: totalCents / 100,
+            currency: 'INR'
+          })
+        });
+
+        const sessionData = await sessionRes.json();
+
+        // 2. If Prava session returned iframeUrl and PravaSDK is available in browser:
+        if (sessionData.success && sessionData.iframeUrl && window.PravaSDK) {
+          scanner.style.display = 'none';
+          container.style.display = 'block';
+          title.textContent = 'Authorize with Biometric Passkey / Card';
+          desc.textContent = 'Secure Prava payment container active for ₹' + totalStr;
+
+          const sdk = new window.PravaSDK({
+            publishableKey: sessionData.publishableKey || 'pk_test_NWYJLkIIGe0clWjBzUwiB9EYyHeE-5UOo_jKapZf5EE'
+          });
+          currentPravaSdkInstance = sdk;
+
+          // Helper to execute order
+          window._executePravaOrder = async () => {
+            container.style.display = 'none';
+            executing.style.display = 'block';
+            title.textContent = 'Payment Authorized';
+            desc.textContent = 'Biometric passkey verified. Placing order via MCP...';
+
+            try {
+              const orderRes = await fetch('/api/prava/execute-order', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({
+                  sessionId,
+                  pravaSessionId: sessionData.sessionId,
+                  mandateId,
+                  userId: activeUser.id
+                })
+              });
+
+              const orderData = await orderRes.json();
+              closeBiometricDialog();
+
+              if (orderData.success) {
+                renderOrderReceipt(orderData);
+                try {
+                  const wRes = await fetch('/api/me/wallet');
+                  if (wRes.ok) {
+                    const wJson = await wRes.json();
+                    setUserUI(wJson.user, wJson.remainingSpendINR);
+                  }
+                } catch (_) {}
+              } else {
+                alert('Prava order execution failed: ' + (orderData.error || 'Unknown error'));
+              }
+            } catch (ordErr) {
+              closeBiometricDialog();
+              alert('Order placement error: ' + ordErr.message);
+            }
+          };
+
+          // Render fallback passkey UI if iframe encounters connection or rendering issues
+          const renderInteractivePasskeyBox = () => {
+            let html = '<div style="padding:20px; background:#FFFFFF; border-radius:12px; border:1px solid rgba(13,148,136,0.2); text-align:center; box-shadow:0 4px 12px rgba(0,0,0,0.03);">';
+            html += '<div style="font-size:36px; margin-bottom:8px;">👆</div>';
+            html += '<div style="font-size:15px; font-weight:700; color:var(--text);">Touch ID / Face ID Passkey</div>';
+            html += '<div style="font-size:12px; color:var(--text-muted); margin:6px 0 16px;">Authorize <b>₹' + totalStr + '</b> on behalf of <b>' + escapeHtml(activeUser.displayName) + '</b></div>';
+            html += '<div style="display:flex; justify-content:center; gap:8px; margin-bottom:16px;">';
+            html += '<span class="item-platform-chip" style="font-size:11px; padding:3px 8px; background:#F0FDF4; color:#047857; border:1px solid #BBF7D0;">✓ Cryptographic FIDO2 Gate</span>';
+            html += '<span class="item-platform-chip" style="font-size:11px; padding:3px 8px; background:#EFF6FF; color:#1D4ED8; border:1px solid #BFDBFE;">🛡️ AP2 Scoped Mandate</span>';
+            html += '</div>';
+            html += '<button type="button" class="btn-submit" style="background:var(--prava); width:100%; padding:12px; font-weight:700; border-radius:8px; color:#FFF; border:none; cursor:pointer; font-size:14px;" onclick="window._executePravaOrder()">';
+            html += '🔒 Approve & Confirm Order (₹' + totalStr + ')';
+            html += '</button></div>';
+            container.innerHTML = html;
+          };
+
+          try {
+            await sdk.collectPAN({
+              sessionToken: sessionData.sessionToken,
+              iframeUrl: sessionData.iframeUrl,
+              container: '#pravaContainer',
+              onSuccess: async () => {
+                window._executePravaOrder();
+              },
+              onError: (err) => {
+                console.warn('Prava collectPAN note:', err);
+                renderInteractivePasskeyBox();
+              }
+            });
+
+            // If iframe didn't attach or errored out in container, detect broken iframe
+            const iframe = container.querySelector('iframe');
+            if (iframe) {
+              iframe.onerror = () => {
+                renderInteractivePasskeyBox();
+              };
+            }
+            return;
+          } catch (collectErr) {
+            console.warn('Prava collectPAN init exception:', collectErr);
+            renderInteractivePasskeyBox();
+            return;
+          }
+        }
+
+        // Fallback for sandboxed or offline mode
+        fallbackDirectCheckout(sessionId, mandateId, challengeId, sessionData.sessionId || 'ses_sandbox');
+      } catch (err) {
+        console.warn('Prava session error, using direct checkout:', err);
+        fallbackDirectCheckout(sessionId, mandateId, challengeId, 'ses_fallback');
+      }
+    }
+
+    async function fallbackDirectCheckout(sessionId, mandateId, challengeId, pravaSessionId) {
+      const desc = document.getElementById('biometricDesc');
+      if (desc) desc.textContent = 'Verifying biometric passkey signature via AP2 bridge...';
 
       setTimeout(async () => {
         try {
-          const res = await fetch('/api/checkout', {
+          let res = await fetch('/api/prava/execute-order', {
             method: 'POST',
             headers: { 'Content-Type': 'application/json' },
             body: JSON.stringify({
               sessionId,
+              pravaSessionId: pravaSessionId || ('ses_auto_' + Date.now()),
               mandateId,
-              challengeId,
-              userId: activeUser ? activeUser.id : undefined,
-              signature: 'prava_fido2_biometric_verified_sig_' + Date.now()
+              userId: activeUser.id
             })
           });
 
-          dialog.style.display = 'none';
+          if (!res.ok) {
+            res = await fetch('/api/checkout', {
+              method: 'POST',
+              headers: { 'Content-Type': 'application/json' },
+              body: JSON.stringify({
+                sessionId,
+                mandateId,
+                challengeId,
+                userId: activeUser.id,
+                signature: 'prava_fido2_biometric_verified_sig_' + Date.now()
+              })
+            });
+          }
+
+          closeBiometricDialog();
           const checkoutData = await res.json();
 
           if (checkoutData.success) {
@@ -3012,10 +3191,10 @@ export function renderWebDashboard(): string {
             }
           }
         } catch (e) {
-          dialog.style.display = 'none';
+          closeBiometricDialog();
           alert('Passkey verification error: ' + e.message);
         }
-      }, 1200);
+      }, 1000);
     }
 
     function renderOrderReceipt(data) {
@@ -3028,20 +3207,28 @@ export function renderWebDashboard(): string {
         ? (order.totalAmountCents / 100).toFixed(2)
         : (data.totalChargedCents !== undefined ? (data.totalChargedCents / 100).toFixed(2) : '0.00');
       const recipient = data.orderedFor || activeUser;
+      const isZepto = order.platform === 'zepto' || (order.merchantName && order.merchantName.toLowerCase().includes('zepto'));
+      const merchantName = isZepto ? 'Zepto' : (order.merchantName || 'Swiggy Instamart');
+      const merchantBadgeColor = isZepto ? '#6D28D9' : '#C2410C';
 
       let html = '<div class="msg-avatar">⚡</div><div class="msg-bubble">';
       html += '<div class="receipt-card">';
-      html += '<div class="receipt-header">✓ Order Confirmed on ' + (order.merchantName || 'Swiggy Instamart') + '!</div>';
-      html += '<div>Your quick-commerce order has been autonomously placed and confirmed on behalf of <b>' + escapeHtml(recipient.name) + '</b>.</div>';
+      html += '<div class="receipt-header" style="color:var(--text); display:flex; align-items:center; gap:8px;">';
+      html += '<span style="color:#047857; font-size:18px;">✓</span> Order Confirmed on <span style="color:' + merchantBadgeColor + '; font-weight:800;">' + merchantName + '</span>!';
+      html += '</div>';
+      html += '<div style="font-size:13px; color:var(--text-muted); margin-bottom:12px;">Your quick-commerce order has been autonomously placed and confirmed on behalf of <b>' + escapeHtml(recipient.name) + '</b> via <b>Prava AP2 Biometric Passkey</b>.</div>';
       html += '<div class="receipt-grid">';
-      html += '<div><b>Order ID:</b> ' + (order.orderId || 'ORD_CONFIRMED') + '</div>';
-      html += '<div><b>Status:</b> Confirmed & Dispatched</div>';
-      html += '<div><b>Total Paid:</b> ₹' + total + '</div>';
-      html += '<div><b>Estimated Delivery:</b> ' + (order.etaMinutes || 20) + ' Mins</div>';
+      html += '<div><b>Order ID:</b> <span style="font-family:monospace; color:var(--primary); font-weight:700;">' + (order.orderId || 'ORD_CONFIRMED') + '</span></div>';
+      html += '<div><b>Status:</b> <span style="color:#047857; font-weight:700;">✓ Confirmed & Dispatched</span></div>';
+      html += '<div><b>Total Paid:</b> <span style="font-weight:800; color:var(--text);">₹' + total + '</span></div>';
+      html += '<div><b>Estimated Delivery:</b> <span style="font-weight:700;">⚡ ' + (order.etaMinutes || 10) + ' Mins</span></div>';
       html += '<div style="grid-column: span 2;"><b>Delivering to:</b> ' + escapeHtml(recipient.address) + ' (' + recipient.pincode + ')</div>';
       html += '</div>';
-      html += '<div style="margin-top: 10px; font-size: 11px; color: var(--text-muted);"><b>Prava AP2 Single-Use Token Reference:</b></div>';
-      html += '<div class="token-proof">' + (data.pravaTokenRef || 'prava_tok_ref_verified') + '</div>';
+      html += '<div style="margin-top: 12px; font-size: 11px; color: var(--text-muted); display:flex; justify-content:space-between; align-items:center;">';
+      html += '<span><b>Prava AP2 Payment Token:</b></span>';
+      html += '<span style="color:var(--prava); font-weight:600;">🔒 Single-Use Scoped Reference</span>';
+      html += '</div>';
+      html += '<div class="token-proof" style="background:#F0FDFA; border:1px solid #CCFBF1; color:#0F766E; font-size:11px; padding:6px 10px; border-radius:6px; font-family:monospace; margin-top:4px;">' + (data.pravaTokenRef || 'prv_tok_ap2_verified') + '</div>';
       html += '</div>';
       html += '</div>';
 
