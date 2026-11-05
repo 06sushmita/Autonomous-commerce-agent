@@ -762,7 +762,7 @@ export function renderLandingPage(): string {
   <!-- Header -->
   <header>
     <a href="/" class="brand">
-      <div class="brand-logo">⚡</div>
+      <div class="brand-logo"><svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><path d="M6 2L3 6v14a2 2 0 0 0 2 2h14a2 2 0 0 0 2-2V6l-3-4z"/><line x1="3" y1="6" x2="21" y2="6"/><path d="M16 10a4 4 0 0 1-8 0"/></svg></div>
       <div class="brand-text">
         <h1>Autonomous Commerce Agent</h1>
         <p>Swiggy & Zepto Real-Time Ordering</p>
@@ -779,7 +779,7 @@ export function renderLandingPage(): string {
 
     <div class="nav-actions">
       <a href="/app?action=signin" class="btn-nav-outline">Sign In</a>
-      <a href="/app" class="btn-nav-primary">Launch Copilot ➔</a>
+      <a href="/app" class="btn-nav-primary">Launch Copilot &rarr;</a>
     </div>
   </header>
 
@@ -787,7 +787,7 @@ export function renderLandingPage(): string {
   <section class="hero-section">
     <div class="hero-badge">
       <span class="dot"></span>
-      ⚡ Real-Time Price Comparison & 10-Minute Delivery
+      Real-Time Price Comparison & 10-Minute Delivery
     </div>
 
     <h1 class="hero-title">
@@ -799,7 +799,7 @@ export function renderLandingPage(): string {
     </p>
 
     <div class="hero-cta-group">
-      <a href="/app" class="btn-hero-primary">Launch Shopping Copilot ➔</a>
+      <a href="/app" class="btn-hero-primary">Launch Shopping Copilot &rarr;</a>
       <a href="#live-comparison" class="btn-hero-secondary">View Live Comparison ↓</a>
     </div>
 
@@ -823,15 +823,15 @@ export function renderLandingPage(): string {
         <div class="preview-agent-card">
           <div class="preview-top-row">
             <div class="preview-badge-group">
-              <span class="preview-badge" style="background:var(--primary); color:#FFF;">🏆 AGENT TOP CHOICE</span>
-              <span class="preview-badge" style="background:#ECFDF5; border:1px solid #A7F3D0; color:#047857;">✓ 5 CONSTRAINTS VERIFIED</span>
+              <span class="preview-badge" style="background:var(--primary); color:#FFF;">AGENT TOP CHOICE</span>
+              <span class="preview-badge" style="background:#ECFDF5; border:1px solid #A7F3D0; color:#047857;">5 CONSTRAINTS VERIFIED</span>
               <span class="preview-badge" style="background:rgba(224,90,28,0.12); border:1px solid rgba(224,90,28,0.3); color:var(--primary);">● Swiggy Instamart</span>
             </div>
-            <span style="font-size:11px; font-weight:700; color:var(--charcoal); background:var(--surface-subtle); padding:3px 8px; border-radius:4px;">⚡ 12 MINS DELIVERY</span>
+            <span style="font-size:11px; font-weight:700; color:var(--charcoal); background:var(--surface-subtle); padding:3px 8px; border-radius:4px;">12 MINS DELIVERY</span>
           </div>
 
           <div class="preview-item-row">
-            <div class="preview-item-img">🥛</div>
+            <div class="preview-item-img"><svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="#64748B" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><line x1="16.5" y1="9.4" x2="7.5" y2="4.21"/><path d="M21 16V8a2 2 0 0 0-1-1.73l-7-4a2 2 0 0 0-2 0l-7 4A2 2 0 0 0 3 8v8a2 2 0 0 0 1 1.73l7 4a2 2 0 0 0 2 0l7-4A2 2 0 0 0 21 16z"/><polyline points="3.27 6.96 12 12.01 20.73 6.96"/><line x1="12" y1="22.08" x2="12" y2="12"/></svg></div>
             <div style="flex:1;">
               <div style="font-size:10px; font-weight:700; color:var(--primary); text-transform:uppercase;">Nandini Milk</div>
               <div style="font-size:15px; font-weight:700; color:var(--text);">Nandini Special Pasteurized Toned Fresh Milk</div>
@@ -848,7 +848,7 @@ export function renderLandingPage(): string {
               Ordering on behalf of <b>Active Verified User</b> • Remaining Daily Limit: <b>₹4,954.00</b>
             </div>
             <a href="/app" class="btn-nav-primary" style="padding:10px 18px; font-size:12px;">
-              🔒 Authorize with Biometric Passkey
+              Authorize with Biometric Passkey
             </a>
           </div>
         </div>
@@ -927,7 +927,7 @@ export function renderLandingPage(): string {
 
     <div class="features-grid">
       <div class="feature-card">
-        <div class="feature-icon-box">⚡</div>
+        <div class="feature-icon-box"><svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polygon points="13 2 3 14 12 14 11 22 21 10 12 10 13 2"/></svg></div>
         <h3 class="feature-title">Swiggy & Zepto MCPs</h3>
         <p class="feature-desc">
           Direct streamable HTTP/SSE connections to official quick-commerce merchant servers. Eliminates scraping, fragile web automations, and stale price caching.
@@ -935,7 +935,7 @@ export function renderLandingPage(): string {
       </div>
 
       <div class="feature-card">
-        <div class="feature-icon-box">🏆</div>
+        <div class="feature-icon-box"><svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="8" r="7"/><polyline points="8.21 13.89 7 23 12 20 17 23 15.79 13.88"/></svg></div>
         <h3 class="feature-title">"The One Best Choice"</h3>
         <p class="feature-desc">
           Instead of overwhelming you with endless catalogs, the agent calculates per-unit prices, delivery fees, and ETAs to spotlight the single best option with direct merchant deep links.
@@ -943,7 +943,7 @@ export function renderLandingPage(): string {
       </div>
 
       <div class="feature-card">
-        <div class="feature-icon-box">🔒</div>
+        <div class="feature-icon-box"><svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="11" width="18" height="11" rx="2" ry="2"/><path d="M7 11V7a5 5 0 0 1 10 0v4"/></svg></div>
         <h3 class="feature-title">Prava AP2 Biometrics</h3>
         <p class="feature-desc">
           FIDO2 WebAuthn passkey protocol ensures the AI agent can never transfer money or finalize a checkout without explicit hardware biometric confirmation from you.
@@ -951,7 +951,7 @@ export function renderLandingPage(): string {
       </div>
 
       <div class="feature-card">
-        <div class="feature-icon-box">📍</div>
+        <div class="feature-icon-box"><svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M21 10c0 7-9 13-9 13s-9-6-9-13a9 9 0 0 1 18 0z"/><circle cx="12" cy="10" r="3"/></svg></div>
         <h3 class="feature-title">Dynamic GPS Geocoding</h3>
         <p class="feature-desc">
           One-click browser GPS or custom Indian address & 6-digit pincode routing. Connects dynamically to dark stores across Bengaluru, Mumbai MMR, Delhi NCR, and beyond.
@@ -959,7 +959,7 @@ export function renderLandingPage(): string {
       </div>
 
       <div class="feature-card">
-        <div class="feature-icon-box">🛡️</div>
+        <div class="feature-icon-box"><svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 22s8-4 8-10V5l-8-3-8 3v7c0 6 8 10 8 10z"/></svg></div>
         <h3 class="feature-title">Daily Budget Limits</h3>
         <p class="feature-desc">
           Configure a daily spend limit (e.g. ₹5,000/day). Neon PostgreSQL enforces rolling 24-hour spend ceilings with atomic reservations and automatic refunds on failed attempts.
@@ -967,7 +967,7 @@ export function renderLandingPage(): string {
       </div>
 
       <div class="feature-card">
-        <div class="feature-icon-box">🔑</div>
+        <div class="feature-icon-box"><svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M21 2l-2 2m-1.5 1.5L14 9l-1.5-1.5L11 9l-1-1-1 1-1-1-1 1-1-1-1 1-1-1-1 1-2-2a7 7 0 1 1 9.9 0L14 9"/></svg></div>
         <h3 class="feature-title">Sign In with Google & 1-Click Access</h3>
         <p class="feature-desc">
           Sign in seamlessly with Google or your verified account. Your saved delivery addresses, preferred grocery items, and daily wallet allowances stay private and synced.
@@ -988,7 +988,7 @@ export function renderLandingPage(): string {
 
     <div class="comparison-wrapper">
       <div style="font-size: 13px; font-weight: 700; color: var(--text-muted); text-transform: uppercase; letter-spacing: 0.05em; margin-bottom: 16px;">
-        🔍 Live Shopping Request: "1L Fresh Toned Milk & Whole Wheat Bread in under 15 mins"
+        Live Shopping Request: "1L Fresh Toned Milk & Whole Wheat Bread in under 15 mins"
       </div>
 
       <div class="comparison-grid">
@@ -998,16 +998,16 @@ export function renderLandingPage(): string {
             <span class="store-brand-pill" style="background: rgba(224, 90, 28, 0.12); color: var(--swiggy); border: 1px solid rgba(224, 90, 28, 0.3);">
               ● Swiggy Instamart
             </span>
-            <span class="store-eta-pill">⚡ 12 Mins Delivery</span>
+            <span class="store-eta-pill">12 Mins Delivery</span>
           </div>
 
           <div class="compare-item-list">
             <div class="compare-item-row">
-              <span>🥛 Nandini Special Toned Milk (1 Litre)</span>
+              <span>Nandini Special Toned Milk (1 Litre)</span>
               <b>₹46.00</b>
             </div>
             <div class="compare-item-row">
-              <span>🍞 English Oven 100% Whole Wheat Bread (400g)</span>
+              <span>English Oven 100% Whole Wheat Bread (400g)</span>
               <b>₹45.00</b>
             </div>
             <div class="compare-item-row" style="color: var(--text-muted); font-size: 12px;">
@@ -1022,7 +1022,7 @@ export function renderLandingPage(): string {
           </div>
 
           <div style="font-size: 11px; font-weight: 700; color: #047857; background: #ECFDF5; border: 1px solid #A7F3D0; padding: 6px 10px; border-radius: 4px; text-align: center;">
-            🏆 <b>The One Best Choice Selected</b> — Lowest Total Basket Price
+            <b>The One Best Choice Selected</b> — Lowest Total Basket Price
           </div>
         </div>
 
@@ -1032,16 +1032,16 @@ export function renderLandingPage(): string {
             <span class="store-brand-pill" style="background: rgba(124, 92, 252, 0.12); color: var(--zepto); border: 1px solid rgba(124, 92, 252, 0.3);">
               ● Zepto
             </span>
-            <span class="store-eta-pill">⚡ 16 Mins Delivery</span>
+            <span class="store-eta-pill">16 Mins Delivery</span>
           </div>
 
           <div class="compare-item-list">
             <div class="compare-item-row">
-              <span>🥛 Nandini Special Toned Milk (1 Litre)</span>
+              <span>Nandini Special Toned Milk (1 Litre)</span>
               <b>₹48.00</b>
             </div>
             <div class="compare-item-row">
-              <span>🍞 The Health Factory Zero Maida Bread (400g)</span>
+              <span>The Health Factory Zero Maida Bread (400g)</span>
               <b>₹48.00</b>
             </div>
             <div class="compare-item-row" style="color: var(--text-muted); font-size: 12px;">
@@ -1065,33 +1065,33 @@ export function renderLandingPage(): string {
       <div class="comparison-winner-banner">
         <div>
           <div style="font-size: 14px; font-weight: 700; color: var(--text);">
-            💡 AI Copilot Decision: Instant ₹4.00 Savings + 4 Minutes Faster Delivery
+            Decision: Instant ₹4.00 Savings + 4 Minutes Faster Delivery
           </div>
           <div style="font-size: 12px; color: var(--text-muted); margin-top: 2px;">
             The agent autonomously factors item variant size, store inventory, delivery fee waivers, and courier availability.
           </div>
         </div>
         <a href="/app" class="btn-nav-primary" style="padding: 10px 20px; font-size: 13px;">
-          Try Live Shopping Copilot ➔
+          Try Live Shopping Copilot &rarr;
         </a>
       </div>
 
       <!-- 4 Pillars of Consumer Trust -->
       <div class="comparison-pillars">
         <div class="pillar-item">
-          <div class="pillar-title">🛒 100% Real-Time Stock</div>
+          <div class="pillar-title">100% Real-Time Stock</div>
           <div class="pillar-desc">Live dark store synchronization guarantees products are on store shelves before cart assembly.</div>
         </div>
         <div class="pillar-item">
-          <div class="pillar-title">⚡ 10–15 Mins Delivery</div>
+          <div class="pillar-title">10–15 Mins Delivery</div>
           <div class="pillar-desc">Dynamic hyperlocal routing connects to the nearest dispatch hub in your neighborhood.</div>
         </div>
         <div class="pillar-item">
-          <div class="pillar-title">🔒 Hardware Biometrics</div>
+          <div class="pillar-title">Hardware Biometrics</div>
           <div class="pillar-desc">Checkout execution is cryptographically bound to Touch ID or Face ID passkeys on your device.</div>
         </div>
         <div class="pillar-item">
-          <div class="pillar-title">🛡️ Zero Overspend</div>
+          <div class="pillar-title">Zero Overspend</div>
           <div class="pillar-desc">Customizable daily allowances safeguard your household grocery budget automatically.</div>
         </div>
       </div>
@@ -1110,7 +1110,7 @@ export function renderLandingPage(): string {
 
     <div class="steps-grid">
       <div class="step-card">
-        <div style="font-size:28px;">🔑</div>
+        <div style="display:flex; justify-content:center; align-items:center; height:40px; color:var(--primary);"><svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M21 2l-2 2m-1.5 1.5L14 9l-1.5-1.5L11 9l-1-1-1 1-1-1-1 1-1-1-1 1-1-1-1 1-2-2a7 7 0 1 1 9.9 0L14 9"/></svg></div>
         <h3 class="step-title">Hardware-Bound FIDO2</h3>
         <p class="step-desc">
           Your private key never leaves your device's Secure Enclave. Touch ID or Face ID generates an ephemeral signature that only validates the exact order mandate.
@@ -1118,7 +1118,7 @@ export function renderLandingPage(): string {
       </div>
 
       <div class="step-card">
-        <div style="font-size:28px;">🛡️</div>
+        <div style="display:flex; justify-content:center; align-items:center; height:40px; color:var(--prava);"><svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 22s8-4 8-10V5l-8-3-8 3v7c0 6 8 10 8 10z"/></svg></div>
         <h3 class="step-title">Single-Use Tokens</h3>
         <p class="step-desc">
           Each order generates an isolated <code>prava_token_ref</code>. Tokens expire immediately once consumed, making replay attacks mathematically impossible.
@@ -1126,7 +1126,7 @@ export function renderLandingPage(): string {
       </div>
 
       <div class="step-card">
-        <div style="font-size:28px;">💳</div>
+        <div style="display:flex; justify-content:center; align-items:center; height:40px; color:var(--primary);"><svg width="28" height="28" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="1" y="4" width="22" height="16" rx="2" ry="2"/><line x1="1" y1="10" x2="23" y2="10"/></svg></div>
         <h3 class="step-title">Atomic Spend Invariants</h3>
         <p class="step-desc">
           Concurrent requests cannot drain your budget. Funds are atomically reserved and either committed upon dispatch or instantly released if the merchant rejects the cart.
@@ -1184,7 +1184,7 @@ export function renderLandingPage(): string {
         Try conversational grocery ordering across Swiggy Instamart and Zepto. Discover real-time pricing, compare dark store delivery speeds, and authorize with biometrics.
       </p>
       <a href="/app" class="btn-hero-primary" style="background:#FFFFFF; color:var(--charcoal); font-size:16px; padding:16px 36px;">
-        Launch Agent Copilot ➔
+        Launch Agent Copilot &rarr;
       </a>
     </div>
   </section>
@@ -1193,7 +1193,7 @@ export function renderLandingPage(): string {
   <footer>
     <div class="footer-content">
       <div class="footer-left">
-        <span style="font-size:18px;">⚡</span>
+        
         <span style="color:#FFF; font-weight:700;">Autonomous Commerce Agent</span>
         <span>•</span>
         <span>Hyperlocal Grocery Delivery via Swiggy Instamart & Zepto</span>

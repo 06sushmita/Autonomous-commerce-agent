@@ -515,12 +515,12 @@ async function handleRequest(req: http.IncomingMessage, res: http.ServerResponse
       if (swiggyCount > 0 || zeptoCount > 0) {
         reply += `Filtered and ranked to the **top 5 highest-accuracy items** based on your priority constraints: **1. Price (lowest first)**, **2. Quantity (stock & pack)**, **3. Product relevance**, and **4. Brand**.\n`;
       } else {
-        reply += `⚠️ No live products found on Swiggy or Zepto for "${query}". Demo items and fabricated fallback prices are strictly prohibited.\n`;
+        reply += `No live products found on Swiggy or Zepto for "${query}". Demo items and fabricated fallback prices are strictly prohibited.\n`;
       }
 
       if (turn && turn.proposal) {
         if (bestItems.length > 1) {
-          reply += `\n⭐ **Agent's Top Choices for Your Requested Items:**\n`;
+          reply += `\n**Agent's Top Choices for Your Requested Items:**\n`;
           bestItems.forEach((it, idx) => {
             const itemPriceStr = (it.priceCents / 100).toFixed(2);
             const unitStr = it.unit ? ` (${it.unit})` : '';
@@ -528,22 +528,22 @@ async function handleRequest(req: http.IncomingMessage, res: http.ServerResponse
           });
         } else {
           const titleStr = bestItem ? `**${bestItem.name}**` : 'Selected Items';
-          reply += `\n⭐ **Agent's Top Choice:** ${titleStr}\n`;
+          reply += `\n**Agent's Top Choice:** ${titleStr}\n`;
         }
         if (turn.proposal.constraintValidation?.allPassed) {
-          reply += `\n🎯 **Multi-Constraint Gate:** ✓ All 5 constraints (Product Brand, Verified Live Price, Cost Limit, Quantity/Stock, and Delivery ETA) strictly accepted by ${turn.proposal.merchantName} MCP server.\n`;
+          reply += `\n**Multi-Constraint Gate:** All 5 constraints (Product Brand, Verified Live Price, Cost Limit, Quantity/Stock, and Delivery ETA) strictly accepted by ${turn.proposal.merchantName} MCP server.\n`;
         }
-        reply += `\n💡 **Reason:** ${turn.recommendationReason}\n`;
+        reply += `\n**Reason:** ${turn.recommendationReason}\n`;
         reply += `Total payable is **₹${(turn.proposal.totalAmountCents / 100).toFixed(2)}** (estimated) with an ETA of **${turn.proposal.etaMinutes} minutes**.\n`;
         if (turn.proposal.budgetSuggestion) {
-          reply += `\n🛡️ **Budget Advisory:** ${turn.proposal.budgetSuggestion.text}\n`;
+          reply += `\n**Budget Advisory:** ${turn.proposal.budgetSuggestion.text}\n`;
         }
         if (turn.passkeyRequired) {
           const countDesc = bestItems.length > 1 ? `all ${bestItems.length} top choices` : 'the spotlight top choice';
           reply += `\nPlease review ${countDesc} below and authorize on behalf of **${user.displayName}** using your Biometric Passkey.`;
         }
       } else if (errorMsg) {
-        reply += `\n⚠️ **Order Constraints Not Met:** ${errorMsg}\nFallback to synthetic or unverified mock data is strictly prohibited.`;
+        reply += `\n**Order Constraints Not Met:** ${errorMsg}\nFallback to synthetic or unverified mock data is strictly prohibited.`;
       }
 
       return sendJson(200, {
@@ -949,8 +949,8 @@ export function startDevServer(port = PORT): http.Server {
 
   server.on('error', (err: any) => {
     if (err.code === 'EADDRINUSE') {
-      console.error(`\n❌ Error: Port ${port} is already in use by another process.`);
-      console.error(`👉 Tip: Stop the other process or set PORT in .env.local (e.g. PORT=3001).\n`);
+      console.error(`\nError: Port ${port} is already in use by another process.`);
+      console.error(`Tip: Stop the other process or set PORT in .env.local (e.g. PORT=3001).\n`);
     } else {
       console.error('Server error:', err);
     }
@@ -959,14 +959,14 @@ export function startDevServer(port = PORT): http.Server {
   server.listen(port, () => {
     console.log(`
 ========================================================================
-🚀 Autonomous Commerce Agent (ACA) Dev Server
+Autonomous Commerce Agent (ACA) Dev Server
 ========================================================================
-📍 Local Web App:     http://localhost:${port}
-📦 Swiggy MCP:        https://mcp.swiggy.com/im (Instamart Live)
-⚡ Zepto MCP:         https://mcp.zepto.co.in/mcp (10-minute Quick Delivery)
-🔒 Prava Payments:    https://sandbox.api.prava.space (AP2 Passkeys)
-🛡️ Spend Controls:    Per-user dynamic limit with FIDO2 gate
-👤 User Auth:         Enabled (Live Identity + Neon PostgreSQL)
+Local Web App:         http://localhost:${port}
+Swiggy MCP:               https://mcp.swiggy.com/im (Instamart Live)
+Zepto MCP:                 https://mcp.zepto.co.in/mcp (10-minute Quick Delivery)
+Prava Payments:       https://sandbox.api.prava.space (AP2 Passkeys)
+Spend Controls:       Per-user dynamic limit with FIDO2 gate
+User Auth:                 Enabled (Live Identity + Neon PostgreSQL)
 ========================================================================
 `);
   });

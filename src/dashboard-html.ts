@@ -1302,7 +1302,7 @@ export function renderWebDashboard(): string {
   <!-- Top Navigation Bar (Deep Charcoal) -->
   <header>
     <a href="/" class="brand" style="text-decoration:none;">
-      <div class="brand-logo">⚡</div>
+      <div class="brand-logo"><svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><path d="M6 2L3 6v14a2 2 0 0 0 2 2h14a2 2 0 0 0 2-2V6l-3-4z"/><line x1="3" y1="6" x2="21" y2="6"/><path d="M16 10a4 4 0 0 1-8 0"/></svg></div>
       <div class="brand-text">
         <h1>Autonomous Commerce Agent</h1>
         <p>Swiggy Instamart + Zepto Real-Time Ordering</p>
@@ -1318,7 +1318,7 @@ export function renderWebDashboard(): string {
     <div style="display:flex; align-items:center; gap:10px;">
       <a href="/" class="btn-auth-switch" style="text-decoration:none; display:inline-flex; align-items:center; gap:6px; color:#D1D5DB; background:rgba(255,255,255,0.08); border-color:rgba(255,255,255,0.15); font-size:11px;">← Overview / Landing</a>
       <button class="user-profile-btn" onclick="openAccountOrLoginModal()" id="navProfileBtn">
-        <div class="user-avatar" id="navAvatar">👤</div>
+        <div class="user-avatar" id="navAvatar"><svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" style="display:inline-block; vertical-align:middle;"><path d="M20 21v-2a4 4 0 0 0-4-4H8a4 4 0 0 0-4 4v2"/><circle cx="12" cy="7" r="4"/></svg></div>
         <div class="user-info">
           <div class="user-name" id="navUserName">Sign In <span style="font-size:10px;">▼</span></div>
           <div class="user-loc" id="navUserLoc">Guest Mode</div>
@@ -1332,13 +1332,13 @@ export function renderWebDashboard(): string {
     <!-- Active Context Info with Dynamic Address & Wallet Controls -->
     <div class="context-banner" id="contextBanner">
       <div class="context-left" id="bannerContent">
-        <span>👤 <b>Guest Session</b></span>
+        <span><b>Guest Session</b></span>
         <span>•</span>
         <span>Please <b>Sign In</b> or <b>Create an Account</b> to configure your wallet budget limit and place orders.</span>
       </div>
       <div style="display: flex; gap: 8px;" id="bannerButtons">
-        <button class="btn-auth-switch" style="border-color:var(--primary); color:var(--primary); background:rgba(224,90,28,0.06);" onclick="openSignupModal()">⚡ Create Account</button>
-        <button class="btn-auth-switch" onclick="openLoginModal()">👤 Sign In</button>
+        <button class="btn-auth-switch" style="border-color:var(--primary); color:var(--primary); background:rgba(224,90,28,0.06);" onclick="openSignupModal()">Create Account</button>
+        <button class="btn-auth-switch" onclick="openLoginModal()">Sign In</button>
       </div>
     </div>
 
@@ -1347,9 +1347,9 @@ export function renderWebDashboard(): string {
       <div class="chat-feed" id="chatFeed">
         <!-- Initial Agent Message -->
         <div class="msg msg-agent">
-          <div class="msg-avatar">⚡</div>
+          <div class="msg-avatar">AI</div>
           <div class="msg-bubble">
-            👋 Welcome! I am your <b>Autonomous Commerce Copilot</b>.<br><br>
+            Welcome. I am your <b>Autonomous Commerce Copilot</b>.<br><br>
             I connect directly to <b>Swiggy Instamart</b> and <b>Zepto</b> in real-time. Simply tell me what you need, and I will locate the nearest dark stores, compare prices and ETAs, spotlight the <b>One Best Choice</b> with official product links, and autonomously execute orders on your behalf with <b>Prava Biometric Passkeys</b>.
           </div>
         </div>
@@ -1358,16 +1358,16 @@ export function renderWebDashboard(): string {
       <!-- Chat Input Bar -->
       <div class="chat-input-bar">
         <div class="quick-chips">
-          <span class="chip" onclick="quickSend('Find me 1L Nandini milk and brown bread in under 15 mins')">🥛 1L Milk & Bread (&lt;15m)</span>
-          <span class="chip" onclick="quickSend('Nandini milk under ₹50 in under 15 mins')">🥛 Nandini Milk (&lt;₹50, &lt;15m)</span>
-          <span class="chip" onclick="quickSend('Amul butter under ₹65 within 10 mins')">🧈 Amul Butter (&lt;₹65, &lt;10m)</span>
-          <span class="chip" onclick="quickSend('6 eggs and brown bread under ₹150')">🥚 6 Eggs & Bread</span>
-          <span class="chip" onclick="quickSend('Maggi Hot & Sweet Chilli Tomato Sauce')">🥫 Maggi Sauce</span>
-          <span class="chip" onclick="quickSend('Compare Swiggy vs Zepto for milk')">⚡ Compare Swiggy vs Zepto</span>
+          <span class="chip" onclick="quickSend('Find me 1L Nandini milk and brown bread in under 15 mins')">1L Milk & Bread (&lt;15m)</span>
+          <span class="chip" onclick="quickSend('Nandini milk under ₹50 in under 15 mins')">Nandini Milk (&lt;₹50, &lt;15m)</span>
+          <span class="chip" onclick="quickSend('Amul butter under ₹65 within 10 mins')">Amul Butter (&lt;₹65, &lt;10m)</span>
+          <span class="chip" onclick="quickSend('6 eggs and brown bread under ₹150')">6 Eggs & Bread</span>
+          <span class="chip" onclick="quickSend('Maggi Hot & Sweet Chilli Tomato Sauce')">Maggi Sauce</span>
+          <span class="chip" onclick="quickSend('Compare Swiggy vs Zepto for milk')">Compare Swiggy vs Zepto</span>
         </div>
         <div class="input-wrapper">
           <input type="text" id="userInput" class="chat-input" placeholder="Search groceries or order items (e.g. 'Maggi sauce', '1L milk', 'Amul butter')..." onkeydown="if(event.key==='Enter') sendMessage()">
-          <button class="btn-send" id="sendBtn" onclick="sendMessage()">Send ➔</button>
+          <button class="btn-send" id="sendBtn" onclick="sendMessage()">Send &rarr;</button>
         </div>
       </div>
     </div>
@@ -1377,8 +1377,8 @@ export function renderWebDashboard(): string {
   <div class="modal-overlay" id="walletModal">
     <div class="modal-content" style="max-width: 480px;">
       <div class="modal-header">
-        <h2>💳 Wallet & Daily Spend Budget</h2>
-        <button class="modal-close" onclick="closeWalletModal()">✕</button>
+        <h2>Wallet & Daily Spend Budget</h2>
+        <button class="modal-close" onclick="closeWalletModal()">&times;</button>
       </div>
       <div class="modal-body">
         <p style="font-size: 12px; color: var(--text-muted); margin-bottom: 14px;">
@@ -1419,8 +1419,8 @@ export function renderWebDashboard(): string {
   <div class="modal-overlay" id="addressModal">
     <div class="modal-content" style="max-width: 520px;">
       <div class="modal-header">
-        <h2>📍 Dynamic Delivery Address</h2>
-        <button class="modal-close" onclick="closeAddressModal()">✕</button>
+        <h2>Delivery Address</h2>
+        <button class="modal-close" onclick="closeAddressModal()">&times;</button>
       </div>
       <div class="modal-body">
         <p style="font-size: 12px; color: var(--text-muted); margin-bottom: 12px;">
@@ -1429,7 +1429,7 @@ export function renderWebDashboard(): string {
 
         <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 14px;">
           <button type="button" class="btn-auth-switch" onclick="detectCurrentLocation()" style="display: flex; align-items: center; gap: 6px; padding: 7px 14px; font-weight: 600;">
-            <span>📍</span> <span id="gpsBtnText">Use My Current GPS Location</span>
+            <span id="gpsBtnText">Use My Current GPS Location</span>
           </button>
           <span style="font-size: 11px; color: var(--text-dim);">Zero address fallbacks</span>
         </div>
@@ -1438,15 +1438,15 @@ export function renderWebDashboard(): string {
         <div class="quick-preset-cards" style="margin-bottom: 14px;">
           <div class="preset-card" onclick="presetAddress('A/30, Sai Anant Darshan, Kopar Rd, Shastri Nagar, Dombivli West, Dombivli, Maharashtra 421202', '421202', 19.2183, 73.0867)">
             <div class="preset-name">Dombivli West</div>
-            <div class="preset-loc">📍 421202 (Mumbai MMR)</div>
+            <div class="preset-loc">421202 (Mumbai MMR)</div>
           </div>
           <div class="preset-card" onclick="presetAddress('Flat 402, Green Glen Layout, Bellandur, Bengaluru, Karnataka 560103', '560103', 12.9298, 77.6835)">
             <div class="preset-name">Bellandur, Bengaluru</div>
-            <div class="preset-loc">📍 560103 (Tech Corridor)</div>
+            <div class="preset-loc">560103 (Tech Corridor)</div>
           </div>
           <div class="preset-card" onclick="presetAddress('Flat 101, Powai Heights, Hiranandani Gardens, Powai, Mumbai, Maharashtra 400076', '400076', 19.1176, 72.9060)">
             <div class="preset-name">Powai, Mumbai</div>
-            <div class="preset-loc">📍 400076 (Hiranandani)</div>
+            <div class="preset-loc">400076 (Hiranandani)</div>
           </div>
         </div>
 
@@ -1476,9 +1476,9 @@ export function renderWebDashboard(): string {
       <div class="modal-header">
         <div>
           <h2>Sign In or Create Account</h2>
-          <div style="font-size: 11px; color: var(--prava); margin-top: 2px; font-weight: 600;">🔒 Secure Account & Daily Spend Guardrails</div>
+          <div style="font-size: 11px; color: var(--prava); margin-top: 2px; font-weight: 600;">Secure Account & Daily Spend Guardrails</div>
         </div>
-        <button class="modal-close" onclick="closeAuthModal()">✕</button>
+        <button class="modal-close" onclick="closeAuthModal()">&times;</button>
       </div>
 
       <div class="modal-tabs">
@@ -1499,7 +1499,7 @@ export function renderWebDashboard(): string {
         </div>
         <button class="btn-submit" id="loginSubmitBtn" onclick="submitLogin()">Sign In</button>
         <div style="text-align: center; margin-top: 14px; font-size: 12px; color: var(--text-muted);">
-          Don't have an account? <a href="javascript:void(0)" onclick="switchAuthTab('signup')" style="color: var(--primary); font-weight: 600; text-decoration: underline;">Create an Account & Set Budget ➔</a>
+          Don't have an account? <a href="javascript:void(0)" onclick="switchAuthTab('signup')" style="color: var(--primary); font-weight: 600; text-decoration: underline;">Create an Account & Set Budget &rarr;</a>
         </div>
       </div>
 
@@ -1536,7 +1536,7 @@ export function renderWebDashboard(): string {
 
         <!-- Initial Daily Wallet Budget Limit Section -->
         <div class="form-group" style="background: var(--bg); padding: 14px; border-radius: var(--radius-sm); border: 1px solid var(--card-border); margin-top: 10px; margin-bottom: 12px;">
-          <label style="color: var(--text); font-weight: 700; font-size: 12px;">💳 Set Daily Wallet Budget Limit (₹)</label>
+          <label style="color: var(--text); font-weight: 700; font-size: 12px;">Set Daily Wallet Budget Limit (₹)</label>
           <p style="font-size: 11px; color: var(--text-muted); margin: 4px 0 10px 0;">
             Configure your daily autonomous commerce spending cap. The agent will never exceed this budget without explicit passkey approval. You can modify this limit anytime.
           </p>
@@ -1553,7 +1553,7 @@ export function renderWebDashboard(): string {
 
         <button class="btn-submit" id="signupSubmitBtn" onclick="submitSignup()">Create Account & Save Budget</button>
         <div style="text-align: center; margin-top: 14px; font-size: 12px; color: var(--text-muted);">
-          Already have an account? <a href="javascript:void(0)" onclick="switchAuthTab('login')" style="color: var(--primary); font-weight: 600; text-decoration: underline;">Sign In ➔</a>
+          Already have an account? <a href="javascript:void(0)" onclick="switchAuthTab('login')" style="color: var(--primary); font-weight: 600; text-decoration: underline;">Sign In &rarr;</a>
         </div>
       </div>
 
@@ -1561,21 +1561,21 @@ export function renderWebDashboard(): string {
       <div class="modal-body" id="accountTab" style="display: none;">
         <div style="background: var(--bg); padding: 16px; border-radius: var(--radius-sm); border: 1px solid var(--card-border); margin-bottom: 16px;">
           <div style="display: flex; align-items: center; gap: 12px; margin-bottom: 12px;">
-            <div class="user-avatar" id="accountAvatar" style="width: 42px; height: 42px; font-size: 14px;">👤</div>
+            <div class="user-avatar" id="accountAvatar" style="width: 42px; height: 42px; font-size: 14px;"><svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" style="display:inline-block; vertical-align:middle;"><path d="M20 21v-2a4 4 0 0 0-4-4H8a4 4 0 0 0-4 4v2"/><circle cx="12" cy="7" r="4"/></svg></div>
             <div>
               <div style="font-size: 16px; font-weight: 700; color: var(--text);" id="accountDisplayName">User Name</div>
               <div style="font-size: 12px; color: var(--text-muted);" id="accountEmail">user@example.com</div>
             </div>
           </div>
-          <div style="font-size: 12px; color: var(--text); margin-bottom: 6px;">📍 <b>Delivery Address:</b> <span id="accountAddress">-</span></div>
-          <div style="font-size: 12px; color: var(--text); margin-bottom: 6px;">🛡️ <b>Daily Wallet Budget:</b> <span id="accountLimit" style="color: #059669; font-weight: 700;">₹5,000.00</span></div>
-          <div style="font-size: 11px; color: var(--text-dim);" id="accountStatusTag">✓ Active Verified Profile</div>
+          <div style="font-size: 12px; color: var(--text); margin-bottom: 6px;"><b>Delivery Address:</b> <span id="accountAddress">-</span></div>
+          <div style="font-size: 12px; color: var(--text); margin-bottom: 6px;"><b>Daily Wallet Budget:</b> <span id="accountLimit" style="color: #059669; font-weight: 700;">₹5,000.00</span></div>
+          <div style="font-size: 11px; color: var(--text-dim);" id="accountStatusTag">Active Verified Profile</div>
         </div>
 
         <div style="display: flex; flex-direction: column; gap: 10px;">
-          <button class="btn-submit" style="background: var(--prava);" onclick="closeAuthModal(); openWalletModal();">💳 Modify Daily Budget Limit</button>
-          <button class="btn-submit" style="background: var(--charcoal);" onclick="closeAuthModal(); openAddressModal();">📍 Change Delivery Address</button>
-          <button class="btn-submit" style="background: #FEF2F2; color: #DC2626; border: 1px solid #FECACA;" onclick="logout()">🚪 Sign Out / Switch User</button>
+          <button class="btn-submit" style="background: var(--prava);" onclick="closeAuthModal(); openWalletModal();">Modify Daily Budget Limit</button>
+          <button class="btn-submit" style="background: var(--charcoal);" onclick="closeAuthModal(); openAddressModal();">Change Delivery Address</button>
+          <button class="btn-submit" style="background: #FEF2F2; color: #DC2626; border: 1px solid #FECACA;" onclick="logout()">Sign Out / Switch User</button>
         </div>
       </div>
     </div>
@@ -1588,7 +1588,7 @@ export function renderWebDashboard(): string {
       <div style="display:flex; align-items:center; gap:8px; margin-bottom:12px;">
         <span class="pill pill-prava"><span class="status-dot"></span> Prava AP2 Gateway</span>
       </div>
-      <div class="scanner-ring" id="biometricScannerRing">🔒</div>
+      <div class="scanner-ring" id="biometricScannerRing"><svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="11" width="18" height="11" rx="2" ry="2"/><path d="M7 11V7a5 5 0 0 1 10 0v4"/></svg></div>
       <h3 style="font-size: 18px; font-weight: 700; color: var(--text); margin-bottom: 6px;" id="biometricTitle">Biometric Passkey Required</h3>
       <p style="font-size: 13px; color: var(--text-muted); margin-bottom: 12px;" id="biometricDesc">
         Prava AP2 is authenticating your Touch ID / Face ID passkey...
@@ -1646,14 +1646,14 @@ export function renderWebDashboard(): string {
 
     function setGuestUI() {
       activeUser = null;
-      document.getElementById('navAvatar').textContent = '👤';
+      document.getElementById('navAvatar').innerHTML = '<svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" style="display:inline-block; vertical-align:middle;"><path d="M20 21v-2a4 4 0 0 0-4-4H8a4 4 0 0 0-4 4v2"/><circle cx="12" cy="7" r="4"/></svg>';
       document.getElementById('navUserName').innerHTML = 'Sign In <span style="font-size:10px;">▼</span>';
       document.getElementById('navUserLoc').textContent = 'Guest Mode';
 
       const bannerContent = document.getElementById('bannerContent');
       if (bannerContent) {
         bannerContent.innerHTML =
-          '<span>👤 <b>Guest Session</b></span>' +
+          '<span><b>Guest Session</b></span>' +
           '<span>•</span>' +
           '<span>Please <b>Sign In</b> or <b>Create an Account</b> to configure your wallet budget limit and place orders.</span>';
       }
@@ -1661,8 +1661,8 @@ export function renderWebDashboard(): string {
       const bannerButtons = document.getElementById('bannerButtons');
       if (bannerButtons) {
         bannerButtons.innerHTML =
-          '<button class="btn-auth-switch" style="border-color:var(--primary); color:var(--primary); background:rgba(224,90,28,0.06);" onclick="openSignupModal()">⚡ Create Account</button>' +
-          '<button class="btn-auth-switch" onclick="openLoginModal()">👤 Sign In</button>';
+          '<button class="btn-auth-switch" style="border-color:var(--primary); color:var(--primary); background:rgba(224,90,28,0.06);" onclick="openSignupModal()">Create Account</button>' +
+          '<button class="btn-auth-switch" onclick="openLoginModal()">Sign In</button>';
       }
 
       const tabAcc = document.getElementById('tabAccountBtn');
@@ -1681,31 +1681,31 @@ export function renderWebDashboard(): string {
         .map(n => n[0])
         .join('')
         .toUpperCase()
-        .slice(0, 2) || '👤';
+        .slice(0, 2) || 'U';
 
       const limitINR = ((user.dailySpendLimitCents || 500000) / 100).toFixed(2);
       const remText = remainingSpendINR ? (' (₹' + parseFloat(remainingSpendINR).toFixed(2) + ' left)') : '';
 
       document.getElementById('navAvatar').textContent = initials;
       document.getElementById('navUserName').innerHTML = (user.displayName || 'User') + ' <span style="font-size:10px;">▼</span>';
-      document.getElementById('navUserLoc').textContent = '📍 ' + (user.defaultPincode || 'India');
+      document.getElementById('navUserLoc').textContent = user.defaultPincode || 'India';
 
       const bannerContent = document.getElementById('bannerContent');
       if (bannerContent) {
         bannerContent.innerHTML =
-          '<span>👤 Ordering for: <b id="bannerUserName" style="color:var(--text);">' + (user.displayName || 'User') + '</b></span>' +
+          '<span>Ordering for: <b id="bannerUserName" style="color:var(--text);">' + (user.displayName || 'User') + '</b></span>' +
           '<span>•</span>' +
-          '<span style="cursor: pointer;" onclick="openAddressModal()" title="Click to edit delivery address">📍 Delivery: <b id="bannerUserAddress" style="color:var(--text);">' + (user.defaultAddress || '') + ' (' + (user.defaultPincode || '') + ')</b> <span style="font-size:11px; color:var(--primary);">✏️ Edit</span></span>' +
+          '<span style="cursor: pointer;" onclick="openAddressModal()" title="Click to edit delivery address">Delivery: <b id="bannerUserAddress" style="color:var(--text);">' + (user.defaultAddress || '') + ' (' + (user.defaultPincode || '') + ')</b> <span style="font-size:11px; color:var(--primary);">Edit</span></span>' +
           '<span>•</span>' +
-          '<span style="cursor: pointer;" onclick="openWalletModal()" title="Click to edit daily budget">🛡️ Limit: <b id="bannerUserLimit" style="color:var(--text);">₹' + limitINR + ' / day' + remText + '</b> <span style="font-size:11px; color:var(--prava);">✏️ Edit</span></span>';
+          '<span style="cursor: pointer;" onclick="openWalletModal()" title="Click to edit daily budget">Daily Limit: <b id="bannerUserLimit" style="color:var(--text);">₹' + limitINR + ' / day' + remText + '</b> <span style="font-size:11px; color:var(--prava);">Edit</span></span>';
       }
 
       const bannerButtons = document.getElementById('bannerButtons');
       if (bannerButtons) {
         bannerButtons.innerHTML =
-          '<button class="btn-auth-switch" style="border-color:var(--prava); color:var(--prava); background:rgba(13,148,136,0.06);" onclick="openWalletModal()">💳 Wallet Budget</button>' +
-          '<button class="btn-auth-switch" onclick="openAddressModal()">📍 Change Location</button>' +
-          '<button class="btn-auth-switch" onclick="openAccountModal()">👤 Account</button>';
+          '<button class="btn-auth-switch" style="border-color:var(--prava); color:var(--prava); background:rgba(13,148,136,0.06);" onclick="openWalletModal()">Wallet Budget</button>' +
+          '<button class="btn-auth-switch" onclick="openAddressModal()">Change Location</button>' +
+          '<button class="btn-auth-switch" onclick="openAccountModal()">Account</button>';
       }
 
       // Update wallet modal indicators if present
@@ -1735,7 +1735,7 @@ export function renderWebDashboard(): string {
       const accLimit = document.getElementById('accountLimit');
       if (accLimit) accLimit.textContent = '₹' + limitINR + ' / day';
       const accStatus = document.getElementById('accountStatusTag');
-      if (accStatus) accStatus.textContent = '✓ Active Verified Profile';
+      if (accStatus) accStatus.textContent = 'Active Verified Profile';
       const accAv = document.getElementById('accountAvatar');
       if (accAv) accAv.textContent = initials;
     }
@@ -1747,7 +1747,7 @@ export function renderWebDashboard(): string {
       } catch (e) {}
       setGuestUI();
       closeAuthModal();
-      appendAgentMessage('👋 You have been logged out. Please sign in or register to start ordering.');
+      appendAgentMessage('You have been logged out. Please sign in or register to start ordering.');
     }
 
     // Wallet & Budget Management Functions
@@ -1802,7 +1802,7 @@ export function renderWebDashboard(): string {
         if (data.success && data.user) {
           setUserUI(data.user);
           closeWalletModal();
-          appendAgentMessage('🛡️ **Wallet Daily Spend Limit Updated:** Set to **₹' + parseFloat(data.dailyLimitINR).toFixed(2) + ' / day**. Saved to Neon database and enforced by agent guardrails.');
+          appendAgentMessage('**Wallet Daily Spend Limit Updated:** Set to **₹' + parseFloat(data.dailyLimitINR).toFixed(2) + ' / day**. Saved to Neon database and enforced by agent guardrails.');
         } else {
           alert(data.error || 'Failed to update wallet limit');
         }
@@ -1855,7 +1855,7 @@ export function renderWebDashboard(): string {
               }
             }
           } catch {}
-          if (btn) btn.textContent = '📍 GPS Detected!';
+          if (btn) btn.textContent = 'GPS Detected!';
         },
         (err) => {
           if (btn) btn.textContent = 'Use My Current GPS Location';
@@ -1907,7 +1907,7 @@ export function renderWebDashboard(): string {
           setUserUI(data.user);
           activeSessionId = null; // Re-initialize agent session with the new dark store location
           closeAddressModal();
-          appendAgentMessage('📍 **Delivery Location Updated:** Set to **' + data.user.defaultAddress + ' (' + data.user.defaultPincode + ')**. Dark-store searches will now route directly to this specified location.');
+          appendAgentMessage('**Delivery Location Updated:** Set to **' + data.user.defaultAddress + ' (' + data.user.defaultPincode + ')**. Dark-store searches will now route directly to this specified location.');
         } else {
           alert(data.error || 'Failed to update delivery address');
         }
@@ -1989,7 +1989,7 @@ export function renderWebDashboard(): string {
         if (data.success && data.user) {
           setUserUI(data.user, data.remainingSpendINR);
           closeAuthModal();
-          appendAgentMessage('👋 Welcome back, **' + data.user.displayName + '**! Active session established.\\n\\n🛡️ Daily Wallet Budget: **₹' + ((data.user.dailySpendLimitCents || 500000) / 100).toFixed(2) + ' / day**\\n📍 Delivery: **' + data.user.defaultAddress + ' (' + data.user.defaultPincode + ')**');
+          appendAgentMessage('Welcome back, **' + data.user.displayName + '**! Active session established.\\n\\nDaily Wallet Budget: **₹' + ((data.user.dailySpendLimitCents || 500000) / 100).toFixed(2) + ' / day**\\nDelivery: **' + data.user.defaultAddress + ' (' + data.user.defaultPincode + ')**');
         } else {
           alert(data.error || 'Login failed. Please verify your credentials.');
         }
@@ -2046,7 +2046,7 @@ export function renderWebDashboard(): string {
         if (data.success && data.user) {
           setUserUI(data.user, data.remainingSpendINR);
           closeAuthModal();
-          appendAgentMessage('🎉 **Welcome ' + data.user.displayName + '!** Your account has been created and your daily wallet budget is configured to **₹' + parseFloat(data.remainingSpendINR).toFixed(2) + ' / day**.\\n\\n📍 Delivery Location: **' + data.user.defaultAddress + ' (' + data.user.defaultPincode + ')**.\\n\\nTell me what you would like to order!');
+          appendAgentMessage('**Welcome ' + data.user.displayName + '!** Your account has been created and your daily wallet budget is configured to **₹' + parseFloat(data.remainingSpendINR).toFixed(2) + ' / day**.\\n\\nDelivery Location: **' + data.user.defaultAddress + ' (' + data.user.defaultPincode + ')**.\\n\\nTell me what you would like to order!');
         } else {
           alert(data.error || 'Registration failed');
         }
@@ -2063,7 +2063,7 @@ export function renderWebDashboard(): string {
     function quickSend(text) {
       if (!activeUser) {
         openSignupModal();
-        appendAgentMessage('🔒 **Authentication Required:** Please sign in or create an account to set your wallet budget and place orders.');
+        appendAgentMessage('**Authentication Required:** Please sign in or create an account to set your wallet budget and place orders.');
         return;
       }
       document.getElementById('userInput').value = text;
@@ -2077,7 +2077,7 @@ export function renderWebDashboard(): string {
 
       if (!activeUser) {
         openSignupModal();
-        appendAgentMessage('🔒 **Authentication Required:** Please sign in or create an account to configure your wallet budget and place orders.');
+        appendAgentMessage('**Authentication Required:** Please sign in or create an account to configure your wallet budget and place orders.');
         return;
       }
 
@@ -2106,7 +2106,7 @@ export function renderWebDashboard(): string {
         appendAgentResponse(data);
       } catch (e) {
         indicator.remove();
-        appendAgentMessage('⚠️ Connection error: ' + e.message);
+        appendAgentMessage('Connection error: ' + e.message);
       }
     }
 
@@ -2123,7 +2123,7 @@ export function renderWebDashboard(): string {
       const feed = document.getElementById('chatFeed');
       const div = document.createElement('div');
       div.className = 'msg msg-agent';
-      div.innerHTML = '<div class="msg-avatar">⚡</div><div class="msg-bubble"><div class="searching-indicator"><span class="dot-flashing"></span> Searching live Swiggy Instamart & Zepto dark stores in real time...</div></div>';
+      div.innerHTML = '<div class="msg-avatar">AI</div><div class="msg-bubble"><div class="searching-indicator"><span class="dot-flashing"></span> Searching live Swiggy Instamart & Zepto dark stores in real time...</div></div>';
       feed.appendChild(div);
       feed.scrollTop = feed.scrollHeight;
       return div;
@@ -2133,7 +2133,7 @@ export function renderWebDashboard(): string {
       const feed = document.getElementById('chatFeed');
       const div = document.createElement('div');
       div.className = 'msg msg-agent';
-      div.innerHTML = '<div class="msg-avatar">⚡</div><div class="msg-bubble">' + formatMarkdown(markdownText) + '</div>';
+      div.innerHTML = '<div class="msg-avatar">AI</div><div class="msg-bubble">' + formatMarkdown(markdownText) + '</div>';
       feed.appendChild(div);
       feed.scrollTop = feed.scrollHeight;
     }
@@ -2163,9 +2163,9 @@ export function renderWebDashboard(): string {
           passkeyBtn.setAttribute('data-challenge', target.challengeId || '');
           passkeyBtn.setAttribute('data-amount', target.totalAmountCents);
           if (activeUser) {
-            passkeyBtn.innerHTML = '🔒 Authorize ₹' + target.totalStr + ' on Swiggy Instamart with Biometric Passkey';
+            passkeyBtn.innerHTML = 'Authorize ₹' + target.totalStr + ' on Swiggy Instamart with Biometric Passkey';
           } else {
-            passkeyBtn.innerHTML = '⚡ Sign In to Authorize Swiggy Order (₹' + target.totalStr + ')';
+            passkeyBtn.innerHTML = 'Sign In to Authorize Swiggy Order (₹' + target.totalStr + ')';
           }
         }
         if (footerPayable) {
@@ -2183,9 +2183,9 @@ export function renderWebDashboard(): string {
           passkeyBtn.setAttribute('data-challenge', target.challengeId || '');
           passkeyBtn.setAttribute('data-amount', target.totalAmountCents);
           if (activeUser) {
-            passkeyBtn.innerHTML = '🔒 Authorize ₹' + target.totalStr + ' on Zepto with Biometric Passkey';
+            passkeyBtn.innerHTML = 'Authorize ₹' + target.totalStr + ' on Zepto with Biometric Passkey';
           } else {
-            passkeyBtn.innerHTML = '⚡ Sign In to Authorize Zepto Order (₹' + target.totalStr + ')';
+            passkeyBtn.innerHTML = 'Sign In to Authorize Zepto Order (₹' + target.totalStr + ')';
           }
         }
         if (footerPayable) {
@@ -2210,21 +2210,21 @@ export function renderWebDashboard(): string {
       // Zepto Tab Button
       html += '<button type="button" class="platform-tab-btn ' + (isZeptoRec ? 'active zepto-active' : '') + '" id="tabZepto_' + sessionId + '" onclick="switchActivePlatform(&quot;' + sessionId + '&quot;, &quot;zepto&quot;)">';
       html += '<div class="tab-header-row">';
-      html += '<span class="tab-brand-name" style="color:#6D28D9;">⚡ Zepto</span>';
-      html += isZeptoRec ? '<span class="tab-badge badge-optimal">🏆 Recommended</span>' : '<span class="tab-badge badge-alt">Alternative</span>';
+      html += '<span class="tab-brand-name" style="color:#6D28D9;">Zepto</span>';
+      html += isZeptoRec ? '<span class="tab-badge badge-optimal">Recommended</span>' : '<span class="tab-badge badge-alt">Alternative</span>';
       html += '</div>';
       html += '<div class="tab-price-val">₹' + zTot + '</div>';
-      html += '<div class="tab-sub-info">⚡ ' + zEta + ' mins delivery' + (zFees.totalAmountCents < sFees.totalAmountCents ? (' • Saves ₹' + diffStr) : '') + '</div>';
+      html += '<div class="tab-sub-info">' + zEta + ' mins delivery' + (zFees.totalAmountCents < sFees.totalAmountCents ? (' • Saves ₹' + diffStr) : '') + '</div>';
       html += '</button>';
 
       // Swiggy Tab Button
       html += '<button type="button" class="platform-tab-btn ' + (!isZeptoRec ? 'active swiggy-active' : '') + '" id="tabSwiggy_' + sessionId + '" onclick="switchActivePlatform(&quot;' + sessionId + '&quot;, &quot;swiggy&quot;)">';
       html += '<div class="tab-header-row">';
-      html += '<span class="tab-brand-name" style="color:#C2410C;">🥫 Swiggy Instamart</span>';
-      html += !isZeptoRec ? '<span class="tab-badge badge-optimal">🏆 Recommended</span>' : '<span class="tab-badge badge-alt">Alternative</span>';
+      html += '<span class="tab-brand-name" style="color:#C2410C;">Swiggy Instamart</span>';
+      html += !isZeptoRec ? '<span class="tab-badge badge-optimal">Recommended</span>' : '<span class="tab-badge badge-alt">Alternative</span>';
       html += '</div>';
       html += '<div class="tab-price-val">₹' + sTot + '</div>';
-      html += '<div class="tab-sub-info">⚡ ' + sEta + ' mins delivery' + (sFees.totalAmountCents < zFees.totalAmountCents ? (' • Saves ₹' + diffStr) : '') + '</div>';
+      html += '<div class="tab-sub-info">' + sEta + ' mins delivery' + (sFees.totalAmountCents < zFees.totalAmountCents ? (' • Saves ₹' + diffStr) : '') + '</div>';
       html += '</button>';
 
       html += '</div>';
@@ -2235,7 +2235,7 @@ export function renderWebDashboard(): string {
         const otherName = zFees.totalAmountCents < sFees.totalAmountCents ? 'Swiggy Instamart' : 'Zepto';
         const cheaperEta = zFees.totalAmountCents < sFees.totalAmountCents ? zEta : sEta;
         html += '<div class="savings-callout-banner">';
-        html += '🎉 <b>' + cheaperName + ' saves ₹' + diffStr + '</b> compared to ' + otherName + ' for this basket • Delivers in ' + cheaperEta + ' mins';
+        html += '<b>' + cheaperName + ' saves ₹' + diffStr + '</b> compared to ' + otherName + ' for this basket • Delivers in ' + cheaperEta + ' mins';
         html += '</div>';
       }
 
@@ -2292,10 +2292,10 @@ export function renderWebDashboard(): string {
         const zPack = zItem.unit || zItem.packSize || zItem.packSizeDescription || '';
         const zUrl = zItem.productUrl || ('https://www.zepto.com/search?query=' + encodeURIComponent(zItem.name));
         html += '<span class="item-platform-chip" style="display:inline-flex; align-items:center; gap:6px; padding:4px 10px; border-radius:6px; font-size:12px; border:1px solid ' + (zIsCheaper ? '#A7F3D0' : '#E2E8F0') + '; background:' + (zIsCheaper ? '#F0FDF4' : '#F8FAFC') + ';">';
-        html += '<span style="font-weight:700; color:#6D28D9;">⚡ Zepto:</span>';
+        html += '<span style="font-weight:700; color:#6D28D9;">Zepto:</span>';
         html += '<span style="font-weight:800; color:var(--text);">₹' + zPrice + (zPack ? (' <span style="font-weight:500; font-size:11px; color:var(--text-muted);">(' + escapeHtml(zPack) + ')</span>') : '') + '</span>';
         if (zIsCheaper) {
-          html += '<span style="background:#ECFDF5; color:#047857; font-size:10px; font-weight:700; padding:1px 6px; border-radius:4px;">✓ Cheaper</span>';
+          html += '<span style="background:#ECFDF5; color:#047857; font-size:10px; font-weight:700; padding:1px 6px; border-radius:4px;">Cheaper</span>';
         } else if (zIsSmallerPack) {
           html += '<span style="background:#FFFBEB; color:#B45309; font-size:10px; font-weight:600; padding:1px 6px; border-radius:4px;">Smaller Pack</span>';
         }
@@ -2308,10 +2308,10 @@ export function renderWebDashboard(): string {
         const sPack = sItem.unit || sItem.packSize || sItem.packSizeDescription || '';
         const sUrl = sItem.productUrl || ('https://www.swiggy.com/instamart/search?query=' + encodeURIComponent(sItem.name));
         html += '<span class="item-platform-chip" style="display:inline-flex; align-items:center; gap:6px; padding:4px 10px; border-radius:6px; font-size:12px; border:1px solid ' + (sIsCheaper ? '#A7F3D0' : '#FED7AA') + '; background:' + (sIsCheaper ? '#F0FDF4' : '#FFF7ED') + ';">';
-        html += '<span style="font-weight:700; color:#C2410C;">🥫 Swiggy:</span>';
+        html += '<span style="font-weight:700; color:#C2410C;">Swiggy:</span>';
         html += '<span style="font-weight:800; color:var(--text);">₹' + sPrice + (sPack ? (' <span style="font-weight:500; font-size:11px; color:var(--text-muted);">(' + escapeHtml(sPack) + ')</span>') : '') + '</span>';
         if (sIsCheaper) {
-          html += '<span style="background:#ECFDF5; color:#047857; font-size:10px; font-weight:700; padding:1px 6px; border-radius:4px;">✓ Cheaper</span>';
+          html += '<span style="background:#ECFDF5; color:#047857; font-size:10px; font-weight:700; padding:1px 6px; border-radius:4px;">Cheaper</span>';
         } else if (sIsSmallerPack) {
           html += '<span style="background:#FFFBEB; color:#B45309; font-size:10px; font-weight:600; padding:1px 6px; border-radius:4px;">Smaller Pack</span>';
         }
@@ -2401,22 +2401,22 @@ export function renderWebDashboard(): string {
         // ETA diff tag
         let etaDiffTag = '<span style="color:var(--text-dim); font-size:11px;">Same</span>';
         if (zEta < sEta) {
-          etaDiffTag = '<span class="save-pill">⚡ Zepto ' + (sEta - zEta) + 'm faster</span>';
+          etaDiffTag = '<span class="save-pill">Zepto ' + (sEta - zEta) + 'm faster</span>';
         } else if (sEta < zEta) {
-          etaDiffTag = '<span class="save-pill">⚡ Swiggy ' + (zEta - sEta) + 'm faster</span>';
+          etaDiffTag = '<span class="save-pill">Swiggy ' + (zEta - sEta) + 'm faster</span>';
         }
 
         html += '<div class="comparison-table-wrapper">';
         html += '<div style="padding:10px 14px; background:var(--bg); border-bottom:1px solid var(--card-border); display:flex; justify-content:space-between; align-items:center;">';
-        html += '<span style="font-weight:700; font-size:12px; text-transform:uppercase; color:var(--text); letter-spacing:0.04em;">📊 Complete Cost Breakdown Comparison (' + (bestItemsCount > 1 ? (bestItemsCount + ' Items') : '1 Item') + ')</span>';
+        html += '<span style="font-weight:700; font-size:12px; text-transform:uppercase; color:var(--text); letter-spacing:0.04em;">Complete Cost Breakdown Comparison (' + (bestItemsCount > 1 ? (bestItemsCount + ' Items') : '1 Item') + ')</span>';
         html += '<span style="font-size:10px; color:var(--text-dim);">Live Multi-Platform Prices</span>';
         html += '</div>';
 
         html += '<table class="cost-comparison-table">';
         html += '<thead><tr>';
         html += '<th class="col-comp">Cost Component</th>';
-        html += '<th class="col-zepto" style="background:#F5F3FF; color:#6D28D9; border-bottom:2px solid #8B5CF6;">⚡ Zepto ' + (isZeptoCheaper ? '<span class="tab-badge badge-optimal">🏆 OPTIMAL</span>' : '') + '</th>';
-        html += '<th class="col-swiggy" style="background:#FFF7ED; color:#C2410C; border-bottom:2px solid #F97316;">🥫 Swiggy Instamart ' + (!isZeptoCheaper ? '<span class="tab-badge badge-optimal">🏆 OPTIMAL</span>' : '') + '</th>';
+        html += '<th class="col-zepto" style="background:#F5F3FF; color:#6D28D9; border-bottom:2px solid #8B5CF6;">Zepto ' + (isZeptoCheaper ? '<span class="tab-badge badge-optimal">OPTIMAL</span>' : '') + '</th>';
+        html += '<th class="col-swiggy" style="background:#FFF7ED; color:#C2410C; border-bottom:2px solid #F97316;">Swiggy Instamart ' + (!isZeptoCheaper ? '<span class="tab-badge badge-optimal">OPTIMAL</span>' : '') + '</th>';
         html += '<th class="col-diff">Difference</th>';
         html += '</tr></thead>';
 
@@ -2425,7 +2425,7 @@ export function renderWebDashboard(): string {
         html += '<tr><td class="col-comp">Delivery Fee</td><td class="col-zepto">' + zDeliv + '</td><td class="col-swiggy">' + sDeliv + '</td><td class="col-diff">' + delivDiffTag + '</td></tr>';
         html += '<tr><td class="col-comp">Platform & Handling Fee</td><td class="col-zepto">₹' + zHand + '</td><td class="col-swiggy">₹' + sHand + '</td><td class="col-diff">' + handDiffTag + '</td></tr>';
         html += '<tr><td class="col-comp">Taxes & GST</td><td class="col-zepto">₹' + zTax + '</td><td class="col-swiggy">₹' + sTax + '</td><td class="col-diff">' + taxDiffTag + '</td></tr>';
-        html += '<tr><td class="col-comp">Delivery Time (ETA)</td><td class="col-zepto"><b>⚡ ' + zEta + ' mins</b></td><td class="col-swiggy"><b>' + sEta + ' mins</b></td><td class="col-diff">' + etaDiffTag + '</td></tr>';
+        html += '<tr><td class="col-comp">Delivery Time (ETA)</td><td class="col-zepto"><b>' + zEta + ' mins</b></td><td class="col-swiggy"><b>' + sEta + ' mins</b></td><td class="col-diff">' + etaDiffTag + '</td></tr>';
 
         html += '<tr class="total-row">';
         html += '<td class="col-comp" style="color:var(--text);"><b>Estimated Total Payable</b></td>';
@@ -2488,7 +2488,7 @@ export function renderWebDashboard(): string {
       const div = document.createElement('div');
       div.className = 'msg msg-agent';
 
-      let html = '<div class="msg-avatar">⚡</div><div class="msg-bubble">';
+      let html = '<div class="msg-avatar">AI</div><div class="msg-bubble">';
       html += formatMarkdown(data.reply);
 
       const swiggyItems = data.swiggyItems || [];
@@ -2562,23 +2562,23 @@ export function renderWebDashboard(): string {
 
         html += '<div class="best-choice-card" id="bestChoiceCard_' + data.sessionId + '">';
         html += '<div class="best-choice-top-bar">';
-        html += '<div class="best-choice-badge">🏆 AGENT TOP CHOICES (' + bestItems.length + ' ITEMS)</div>';
+        html += '<div class="best-choice-badge">AGENT TOP CHOICES (' + bestItems.length + ' ITEMS)</div>';
         if (prop.constraintValidation && prop.constraintValidation.allPassed) {
-          html += '<span style="border: 1px solid #10b981; color: #047857; background: #ECFDF5; font-size:11px; padding:3px 10px; border-radius:12px; font-weight:700; display:inline-flex; align-items:center; gap:6px;">✓ 5 CONSTRAINTS VERIFIED</span>';
+          html += '<span style="border: 1px solid #10b981; color: #047857; background: #ECFDF5; font-size:11px; padding:3px 10px; border-radius:12px; font-weight:700; display:inline-flex; align-items:center; gap:6px;">5 CONSTRAINTS VERIFIED</span>';
         }
         html += '<span style="border: 1px solid ' + platformColor + '; color: ' + platformColor + '; background: ' + (isSwiggy ? 'var(--swiggy-glow)' : 'var(--zepto-glow)') + '; font-size:11px; padding:3px 10px; border-radius:12px; font-weight:700; display:inline-flex; align-items:center; gap:6px;">';
         html += '<span class="status-dot" style="background:' + platformColor + ';"></span> ' + platformName;
         html += '</span>';
-        html += '<span class="eta-badge" style="background:var(--surface-subtle); color:var(--text); font-weight:700;">⚡ ' + eta + ' MINS DELIVERY</span>';
+        html += '<span class="eta-badge" style="background:var(--surface-subtle); color:var(--text); font-weight:700;">' + eta + ' MINS DELIVERY</span>';
         html += '</div>';
 
         if (prop.constraintValidation && prop.constraintValidation.allPassed) {
           html += '<div style="display:flex; flex-wrap:wrap; gap:6px; margin: 0 0 12px 0;">';
-          html += '<span style="background:#ECFDF5; border:1px solid #A7F3D0; color:#047857; font-size:10px; font-weight:700; padding:2px 8px; border-radius:6px;">✓ Brand Verified</span>';
-          html += '<span style="background:#ECFDF5; border:1px solid #A7F3D0; color:#047857; font-size:10px; font-weight:700; padding:2px 8px; border-radius:6px;">✓ Live MCP Price Confirmed</span>';
-          html += '<span style="background:#ECFDF5; border:1px solid #A7F3D0; color:#047857; font-size:10px; font-weight:700; padding:2px 8px; border-radius:6px;">✓ Cost Limit Satisfied</span>';
-          html += '<span style="background:#ECFDF5; border:1px solid #A7F3D0; color:#047857; font-size:10px; font-weight:700; padding:2px 8px; border-radius:6px;">✓ Stock & Qty Available</span>';
-          html += '<span style="background:#ECFDF5; border:1px solid #A7F3D0; color:#047857; font-size:10px; font-weight:700; padding:2px 8px; border-radius:6px;">✓ Delivery ETA (' + eta + 'm) Guaranteed</span>';
+          html += '<span style="background:#ECFDF5; border:1px solid #A7F3D0; color:#047857; font-size:10px; font-weight:700; padding:2px 8px; border-radius:6px;">Brand Verified</span>';
+          html += '<span style="background:#ECFDF5; border:1px solid #A7F3D0; color:#047857; font-size:10px; font-weight:700; padding:2px 8px; border-radius:6px;">Live MCP Price Confirmed</span>';
+          html += '<span style="background:#ECFDF5; border:1px solid #A7F3D0; color:#047857; font-size:10px; font-weight:700; padding:2px 8px; border-radius:6px;">Cost Limit Satisfied</span>';
+          html += '<span style="background:#ECFDF5; border:1px solid #A7F3D0; color:#047857; font-size:10px; font-weight:700; padding:2px 8px; border-radius:6px;">Stock & Qty Available</span>';
+          html += '<span style="background:#ECFDF5; border:1px solid #A7F3D0; color:#047857; font-size:10px; font-weight:700; padding:2px 8px; border-radius:6px;">Delivery ETA (' + eta + 'm) Guaranteed</span>';
           html += '</div>';
         }
 
@@ -2598,7 +2598,7 @@ export function renderWebDashboard(): string {
             : 'https://www.zepto.com/search?query=' + encodeURIComponent(item.name));
           const isButter = item.name.toLowerCase().includes('butter');
           const isEgg = item.name.toLowerCase().includes('egg');
-          const icon = isButter ? '🧈' : (isEgg ? '🥚' : (isSwiggy ? '🥫' : '⚡'));
+          const icon = isButter ? 'Butter' : (isEgg ? 'Eggs' : (isSwiggy ? 'Swiggy' : 'Zepto'));
 
           const zItem = (zeptoProp && zeptoProp.bestItems && zeptoProp.bestItems[i]) || (zeptoProp && zeptoProp.bestItem);
           const sItem = (swiggyProp && swiggyProp.bestItems && swiggyProp.bestItems[i]) || (swiggyProp && swiggyProp.bestItem);
@@ -2634,20 +2634,20 @@ export function renderWebDashboard(): string {
           html += '</div>';
 
           if (item.matchClassification === 'ALTERNATIVE' || item.isAlternative) {
-            html += '<div style="margin-top:4px;"><span style="background:#FEF3C7; color:#92400E; border:1px solid #FCD34D; font-size:10px; font-weight:700; padding:2px 8px; border-radius:10px; display:inline-block;">⚡ Alternative Match (Requires Confirmation)</span></div>';
+            html += '<div style="margin-top:4px;"><span style="background:#FEF3C7; color:#92400E; border:1px solid #FCD34D; font-size:10px; font-weight:700; padding:2px 8px; border-radius:10px; display:inline-block;">Alternative Match (Requires Confirmation)</span></div>';
           } else if (item.matchClassification === 'EXACT_MATCH') {
-            html += '<div style="margin-top:4px;"><span style="background:#ECFDF5; color:#065F46; border:1px solid #A7F3D0; font-size:10px; font-weight:700; padding:2px 8px; border-radius:10px; display:inline-block;">✓ Exact Match</span></div>';
+            html += '<div style="margin-top:4px;"><span style="background:#ECFDF5; color:#065F46; border:1px solid #A7F3D0; font-size:10px; font-weight:700; padding:2px 8px; border-radius:10px; display:inline-block;">Exact Match</span></div>';
           } else {
-            html += '<div style="margin-top:4px;"><span style="background:#F0FDF4; color:#166534; border:1px solid #BBF7D0; font-size:10px; font-weight:700; padding:2px 8px; border-radius:10px; display:inline-block;">✓ Compatible Match</span></div>';
+            html += '<div style="margin-top:4px;"><span style="background:#F0FDF4; color:#166534; border:1px solid #BBF7D0; font-size:10px; font-weight:700; padding:2px 8px; border-radius:10px; display:inline-block;">Compatible Match</span></div>';
           }
 
           // Side-by-side platform price comparison chips for this item!
           html += renderItemPlatformPricing(zItem, sItem);
 
           if (item.isPriceVerified !== false) {
-            html += '<span class="verified-price-tag verified" style="font-size:9px; padding:1px 6px; margin-top:4px;">✓ Verified Live Price</span>';
+            html += '<span class="verified-price-tag verified" style="font-size:9px; padding:1px 6px; margin-top:4px;">Verified Live Price</span>';
           } else {
-            html += '<span class="verified-price-tag unverified" style="font-size:9px; padding:1px 6px; margin-top:4px;">⚠️ Unverified</span>';
+            html += '<span class="verified-price-tag unverified" style="font-size:9px; padding:1px 6px; margin-top:4px;">Unverified</span>';
           }
           html += '</div>';
 
@@ -2663,7 +2663,7 @@ export function renderWebDashboard(): string {
         html += '</div>';
 
         html += '<div class="best-choice-reason" id="bestHeroReason_' + data.sessionId + '">';
-        html += '💡 <b>Why these are your best choices:</b> ' + escapeHtml(data.recommendationReason || 'Optimal combination of dark store availability, lowest price, and fastest guaranteed ETA for both requested items.');
+        html += '<b>Why these are your best choices:</b> ' + escapeHtml(data.recommendationReason || 'Optimal combination of dark store availability, lowest price, and fastest guaranteed ETA for both requested items.');
         html += '</div>';
 
         // Side-by-side multi-platform live order cost breakdown table!
@@ -2672,7 +2672,7 @@ export function renderWebDashboard(): string {
         if (prop.budgetExceeded || prop.budgetSuggestion) {
           const advisoryMsg = prop.budgetSuggestion ? prop.budgetSuggestion.text : ('Estimated total ₹' + total + ' exceeds remaining daily budget.');
           html += '<div class="budget-alert-banner">';
-          html += '🛡️ <b>Daily Budget Advisory:</b> ' + escapeHtml(advisoryMsg);
+          html += '<b>Daily Budget Advisory:</b> ' + escapeHtml(advisoryMsg);
           html += '</div>';
         }
 
@@ -2680,7 +2680,7 @@ export function renderWebDashboard(): string {
 
         if (prop.unavailableItems && prop.unavailableItems.length > 0) {
           html += '<div style="background:#FEF2F2; border:1px solid #FECACA; border-radius:var(--radius-sm); padding:10px 14px; margin:12px 0;">';
-          html += '<div style="font-size:12px; font-weight:700; color:#DC2626;">⚠️ Unavailable Items (Could Not Be Fulfilled):</div>';
+          html += '<div style="font-size:12px; font-weight:700; color:#DC2626;">Unavailable Items (Could Not Be Fulfilled):</div>';
           html += '<div style="font-size:12px; color:#B91C1C; margin-top:4px;">';
           prop.unavailableItems.forEach(u => { html += '• ' + escapeHtml(u) + '<br>'; });
           html += '</div></div>';
@@ -2696,25 +2696,25 @@ export function renderWebDashboard(): string {
         const hasUnverified = bestItems.some(it => it.isPriceVerified === false) || prop.isPriceVerified === false;
         if (hasUnverified) {
           html += '<button class="btn-passkey" style="background: #FEF2F2; border: 1px solid #FECACA; color: #DC2626;" disabled>';
-          html += '⚠️ Checkout Blocked: Item price not verified by merchant integration';
+          html += 'Checkout Blocked: Item price not verified by merchant integration';
           html += '</button>';
         } else if (prop.budgetExceeded) {
           html += '<button class="btn-passkey" style="background: #FFFBEB; border: 1px solid #FDE68A; color: #B45309;" disabled title="Daily spend limit exceeded">';
-          html += '⚠️ Cannot Authorize: Exceeds Daily Spend Limit (Adjust in Wallet or select cheaper alternative)';
+          html += 'Cannot Authorize: Exceeds Daily Spend Limit (Adjust in Wallet or select cheaper alternative)';
           html += '</button>';
         } else if (activeUser && data.mandateBundle) {
           const mandateId = data.mandateBundle.mandateId || '';
           const challengeId = (data.mandateBundle.challenge && data.mandateBundle.challenge.challengeId) || '';
           html += '<button class="btn-passkey" id="passkeyBtn_' + data.sessionId + '" data-session="' + data.sessionId + '" data-mandate="' + mandateId + '" data-challenge="' + challengeId + '" data-amount="' + prop.totalAmountCents + '" onclick="triggerPasskeyFromBtn(this)">';
-          html += '🔒 Authorize ₹' + total + ' for ' + bestItems.length + ' Items on ' + platformName + ' with Biometric Passkey';
+          html += 'Authorize ₹' + total + ' for ' + bestItems.length + ' Items on ' + platformName + ' with Biometric Passkey';
           html += '</button>';
         } else if (!activeUser) {
           html += '<button class="btn-passkey" id="passkeyBtn_' + data.sessionId + '" onclick="openSignupModal()">';
-          html += '⚡ Sign In to Authorize Order (₹' + total + ')';
+          html += 'Sign In to Authorize Order (₹' + total + ')';
           html += '</button>';
         } else {
           html += '<button class="btn-passkey" style="background: #FEF2F2; border: 1px solid #FECACA; color: #DC2626;" disabled>';
-          html += '⚠️ ' + escapeHtml((data.turn && data.turn.error) || data.error || 'Authorization mandate unavailable');
+          html += escapeHtml((data.turn && data.turn.error) || data.error || 'Authorization mandate unavailable');
           html += '</button>';
         }
         html += '</div>'; // end best-choice-footer
@@ -2749,23 +2749,23 @@ export function renderWebDashboard(): string {
 
         html += '<div class="best-choice-card" id="bestChoiceCard_' + data.sessionId + '">';
         html += '<div class="best-choice-top-bar">';
-        html += '<div class="best-choice-badge">🏆 AGENT TOP CHOICE</div>';
+        html += '<div class="best-choice-badge">AGENT TOP CHOICE</div>';
         if (prop.constraintValidation && prop.constraintValidation.allPassed) {
-          html += '<span style="border: 1px solid #10b981; color: #047857; background: #ECFDF5; font-size:11px; padding:3px 10px; border-radius:12px; font-weight:700; display:inline-flex; align-items:center; gap:6px;">✓ 5 CONSTRAINTS VERIFIED</span>';
+          html += '<span style="border: 1px solid #10b981; color: #047857; background: #ECFDF5; font-size:11px; padding:3px 10px; border-radius:12px; font-weight:700; display:inline-flex; align-items:center; gap:6px;">5 CONSTRAINTS VERIFIED</span>';
         }
         html += '<span style="border: 1px solid ' + platformColor + '; color: ' + platformColor + '; background: ' + (isSwiggy ? 'var(--swiggy-glow)' : 'var(--zepto-glow)') + '; font-size:11px; padding:3px 10px; border-radius:12px; font-weight:700; display:inline-flex; align-items:center; gap:6px;">';
         html += '<span class="status-dot" style="background:' + platformColor + ';"></span> ' + platformName;
         html += '</span>';
-        html += '<span class="eta-badge" style="background:var(--surface-subtle); color:var(--text); font-weight:700;">⚡ ' + eta + ' MINS DELIVERY</span>';
+        html += '<span class="eta-badge" style="background:var(--surface-subtle); color:var(--text); font-weight:700;">' + eta + ' MINS DELIVERY</span>';
         html += '</div>';
 
         if (prop.constraintValidation && prop.constraintValidation.allPassed) {
           html += '<div style="display:flex; flex-wrap:wrap; gap:6px; margin: 0 0 14px 0;">';
-          html += '<span style="background:#ECFDF5; border:1px solid #A7F3D0; color:#047857; font-size:10px; font-weight:700; padding:2px 8px; border-radius:6px;">✓ Brand Verified</span>';
-          html += '<span style="background:#ECFDF5; border:1px solid #A7F3D0; color:#047857; font-size:10px; font-weight:700; padding:2px 8px; border-radius:6px;">✓ Live MCP Price Confirmed</span>';
-          html += '<span style="background:#ECFDF5; border:1px solid #A7F3D0; color:#047857; font-size:10px; font-weight:700; padding:2px 8px; border-radius:6px;">✓ Cost Limit Satisfied</span>';
-          html += '<span style="background:#ECFDF5; border:1px solid #A7F3D0; color:#047857; font-size:10px; font-weight:700; padding:2px 8px; border-radius:6px;">✓ Stock & Qty Available</span>';
-          html += '<span style="background:#ECFDF5; border:1px solid #A7F3D0; color:#047857; font-size:10px; font-weight:700; padding:2px 8px; border-radius:6px;">✓ Delivery ETA (' + eta + 'm) Guaranteed</span>';
+          html += '<span style="background:#ECFDF5; border:1px solid #A7F3D0; color:#047857; font-size:10px; font-weight:700; padding:2px 8px; border-radius:6px;">Brand Verified</span>';
+          html += '<span style="background:#ECFDF5; border:1px solid #A7F3D0; color:#047857; font-size:10px; font-weight:700; padding:2px 8px; border-radius:6px;">Live MCP Price Confirmed</span>';
+          html += '<span style="background:#ECFDF5; border:1px solid #A7F3D0; color:#047857; font-size:10px; font-weight:700; padding:2px 8px; border-radius:6px;">Cost Limit Satisfied</span>';
+          html += '<span style="background:#ECFDF5; border:1px solid #A7F3D0; color:#047857; font-size:10px; font-weight:700; padding:2px 8px; border-radius:6px;">Stock & Qty Available</span>';
+          html += '<span style="background:#ECFDF5; border:1px solid #A7F3D0; color:#047857; font-size:10px; font-weight:700; padding:2px 8px; border-radius:6px;">Delivery ETA (' + eta + 'm) Guaranteed</span>';
           html += '</div>';
         }
 
@@ -2777,7 +2777,7 @@ export function renderWebDashboard(): string {
         if (best.imageUrl) {
           html += '<img id="bestHeroImg_' + data.sessionId + '" src="' + best.imageUrl + '" alt="' + escapeHtml(best.name) + '">';
         } else {
-          html += '<span style="font-size:36px;">' + (isSwiggy ? '🥫' : '⚡') + '</span>';
+          html += '<span style="font-size:36px;">' + (isSwiggy ? 'Swiggy' : 'Zepto') + '</span>';
         }
         html += '<span class="live-in-stock-tag">● IN STOCK</span>';
         html += '</div>';
@@ -2801,20 +2801,20 @@ export function renderWebDashboard(): string {
           html += '<span class="discount-pill" id="bestHeroDiscount_' + data.sessionId + '">' + discountPct + '% OFF</span>';
         }
         if (best.isPriceVerified) {
-          html += '<span class="verified-price-tag verified">✓ Verified Live Price</span>';
+          html += '<span class="verified-price-tag verified">Verified Live Price</span>';
         } else {
-          html += '<span class="verified-price-tag unverified">⚠️ Unverified Price</span>';
+          html += '<span class="verified-price-tag unverified">Unverified Price</span>';
         }
         html += '</div>';
 
         html += '<div class="best-choice-links-row">';
         html += '<a href="' + productUrl + '" id="bestHeroLink_' + data.sessionId + '" target="_blank" rel="noopener noreferrer" class="btn-product-external">';
-        html += '🔗 View Product on ' + platformName + ' ↗';
+        html += 'View Product on ' + platformName + ' &nearr;';
         html += '</a>';
         html += '</div>';
 
         html += '<div class="best-choice-reason" id="bestHeroReason_' + data.sessionId + '">';
-        html += '💡 <b>Why this is your best choice:</b> ' + escapeHtml(data.recommendationReason || 'Optimal combination of dark store availability, lowest price, and fastest guaranteed ETA.');
+        html += '<b>Why this is your best choice:</b> ' + escapeHtml(data.recommendationReason || 'Optimal combination of dark store availability, lowest price, and fastest guaranteed ETA.');
         html += '</div>';
 
         // Side-by-side multi-platform live order cost breakdown table!
@@ -2823,7 +2823,7 @@ export function renderWebDashboard(): string {
         if (prop.budgetExceeded || prop.budgetSuggestion) {
           const advisoryMsg = prop.budgetSuggestion ? prop.budgetSuggestion.text : ('Estimated total ₹' + total + ' exceeds remaining daily budget.');
           html += '<div class="budget-alert-banner">';
-          html += '🛡️ <b>Daily Budget Advisory:</b> ' + escapeHtml(advisoryMsg);
+          html += '<b>Daily Budget Advisory:</b> ' + escapeHtml(advisoryMsg);
           html += '</div>';
         }
 
@@ -2834,7 +2834,7 @@ export function renderWebDashboard(): string {
 
         if (prop.unavailableItems && prop.unavailableItems.length > 0) {
           html += '<div style="background:#FEF2F2; border:1px solid #FECACA; border-radius:var(--radius-sm); padding:10px 14px; margin:12px 0;">';
-          html += '<div style="font-size:12px; font-weight:700; color:#DC2626;">⚠️ Unavailable Items (Could Not Be Fulfilled):</div>';
+          html += '<div style="font-size:12px; font-weight:700; color:#DC2626;">Unavailable Items (Could Not Be Fulfilled):</div>';
           html += '<div style="font-size:12px; color:#B91C1C; margin-top:4px;">';
           prop.unavailableItems.forEach(u => { html += '• ' + escapeHtml(u) + '<br>'; });
           html += '</div></div>';
@@ -2849,25 +2849,25 @@ export function renderWebDashboard(): string {
 
         if (best.isPriceVerified === false || prop.isPriceVerified === false) {
           html += '<button class="btn-passkey" style="background: #FEF2F2; border: 1px solid #FECACA; color: #DC2626;" disabled>';
-          html += '⚠️ Checkout Blocked: Item price not verified by merchant integration';
+          html += 'Checkout Blocked: Item price not verified by merchant integration';
           html += '</button>';
         } else if (prop.budgetExceeded) {
           html += '<button class="btn-passkey" style="background: #FFFBEB; border: 1px solid #FDE68A; color: #B45309;" disabled title="Daily spend limit exceeded">';
-          html += '⚠️ Cannot Authorize: Exceeds Daily Spend Limit (Adjust in Wallet or select cheaper alternative)';
+          html += 'Cannot Authorize: Exceeds Daily Spend Limit (Adjust in Wallet or select cheaper alternative)';
           html += '</button>';
         } else if (activeUser && data.mandateBundle) {
           const mandateId = data.mandateBundle.mandateId || '';
           const challengeId = (data.mandateBundle.challenge && data.mandateBundle.challenge.challengeId) || '';
           html += '<button class="btn-passkey" id="passkeyBtn_' + data.sessionId + '" data-session="' + data.sessionId + '" data-mandate="' + mandateId + '" data-challenge="' + challengeId + '" data-amount="' + prop.totalAmountCents + '" onclick="triggerPasskeyFromBtn(this)">';
-          html += '🔒 Authorize ₹' + total + ' on ' + platformName + ' with Biometric Passkey';
+          html += 'Authorize ₹' + total + ' on ' + platformName + ' with Biometric Passkey';
           html += '</button>';
         } else if (!activeUser) {
           html += '<button class="btn-passkey" id="passkeyBtn_' + data.sessionId + '" onclick="openSignupModal()">';
-          html += '⚡ Sign In to Authorize Order (₹' + total + ')';
+          html += 'Sign In to Authorize Order (₹' + total + ')';
           html += '</button>';
         } else {
           html += '<button class="btn-passkey" style="background: #FEF2F2; border: 1px solid #FECACA; color: #DC2626;" disabled>';
-          html += '⚠️ ' + escapeHtml((data.turn && data.turn.error) || data.error || 'Authorization mandate unavailable');
+          html += escapeHtml((data.turn && data.turn.error) || data.error || 'Authorization mandate unavailable');
           html += '</button>';
         }
         html += '</div>'; // end best-choice-footer
@@ -2880,7 +2880,7 @@ export function renderWebDashboard(): string {
       if (topOptions.length > 0) {
         html += '<div class="alt-options-section">';
         html += '<div class="alt-options-header">';
-        html += '<span>📦 Top 5 Verified Options & Alternatives</span>';
+        html += '<span>Top 5 Verified Options & Alternatives</span>';
         html += '<span style="font-size:11px; color:var(--text-muted);">Ranked by: 1. Price (Lowest) • 2. Quantity (In-Stock) • 3. Match • 4. Brand</span>';
         html += '</div>';
 
@@ -2906,7 +2906,7 @@ export function renderWebDashboard(): string {
           html += '<span class="eta-badge">' + (item.etaMinutes || (isSwiggy ? 14 : 10)) + 'm</span>';
           html += '</div>';
 
-          html += '<div class="product-img">' + (item.imageUrl ? '<img src="' + item.imageUrl + '" alt="' + escapeHtml(item.name) + '">' : (isSwiggy ? '🥫' : '⚡')) + '</div>';
+          html += '<div class="product-img">' + (item.imageUrl ? '<img src="' + item.imageUrl + '" alt="' + escapeHtml(item.name) + '">' : (isSwiggy ? 'Swiggy' : 'Zepto')) + '</div>';
           html += '<div>';
           html += '<div class="product-brand">' + escapeHtml(item.brand || pName) + '</div>';
           html += '<div class="product-name" title="' + escapeHtml(item.name) + '">' + escapeHtml(item.name) + '</div>';
@@ -2923,7 +2923,7 @@ export function renderWebDashboard(): string {
 
           html += '<div class="product-card-actions">';
           html += '<a href="' + pUrl + '" target="_blank" rel="noopener noreferrer" class="product-card-link">View Product ↗</a>';
-          html += '<button class="btn-select-alt" data-session="' + data.sessionId + '" data-index="' + idx + '" onclick="handleSelectAlternative(this)">Select ➔</button>';
+          html += '<button class="btn-select-alt" data-session="' + data.sessionId + '" data-index="' + idx + '" onclick="handleSelectAlternative(this)">Select &rarr;</button>';
           html += '</div>';
 
           html += '</div>'; // end product-card
@@ -2941,7 +2941,7 @@ export function renderWebDashboard(): string {
     function handleSelectAlternative(btn) {
       if (!activeUser) {
         openSignupModal();
-        appendAgentMessage('🔒 **Authentication Required:** Please sign in or create an account to configure your wallet budget and place orders.');
+        appendAgentMessage('**Authentication Required:** Please sign in or create an account to configure your wallet budget and place orders.');
         return;
       }
       const sessionId = btn.getAttribute('data-session');
@@ -2990,15 +2990,15 @@ export function renderWebDashboard(): string {
       if (totalEl) totalEl.textContent = '₹' + newTotalStr;
 
       if (reasonEl) {
-        reasonEl.innerHTML = '💡 <b>Selected by You:</b> Switched to <b>' + escapeHtml(selected.name) + '</b> from ' + platformName + ' with live dark store dispatch.';
+        reasonEl.innerHTML = '<b>Selected by You:</b> Switched to <b>' + escapeHtml(selected.name) + '</b> from ' + platformName + ' with live dark store dispatch.';
       }
       if (linkEl && selected.productUrl) {
         linkEl.href = selected.productUrl;
-        linkEl.textContent = '🔗 View Product on ' + platformName + ' ↗';
+        linkEl.textContent = 'View Product on ' + platformName + ' &nearr;';
       }
       if (passkeyBtn) {
         passkeyBtn.setAttribute('data-amount', newTotalCents);
-        passkeyBtn.innerHTML = '🔒 Authorize ₹' + newTotalStr + ' with Biometric Passkey (Touch ID / Face ID)';
+        passkeyBtn.innerHTML = 'Authorize ₹' + newTotalStr + ' with Biometric Passkey (Touch ID / Face ID)';
       }
 
       document.querySelectorAll('[id^="prodCard_' + sessionId + '_"]').forEach(function(card) {
@@ -3014,7 +3014,7 @@ export function renderWebDashboard(): string {
     function triggerPasskeyFromBtn(btn) {
       if (!activeUser) {
         openSignupModal();
-        appendAgentMessage('🔒 **Authentication Required:** Please sign in or create an account to configure your wallet budget and place orders.');
+        appendAgentMessage('**Authentication Required:** Please sign in or create an account to configure your wallet budget and place orders.');
         return;
       }
       const sessionId = btn.getAttribute('data-session');
@@ -3042,7 +3042,7 @@ export function renderWebDashboard(): string {
     async function triggerPasskeyCheckout(sessionId, mandateId, challengeId, totalCents) {
       if (!activeUser) {
         openSignupModal();
-        appendAgentMessage('🔒 **Authentication Required:** Please sign in or create an account to configure your wallet budget and place orders.');
+        appendAgentMessage('**Authentication Required:** Please sign in or create an account to configure your wallet budget and place orders.');
         return;
       }
       const dialog = document.getElementById('biometricDialog');
@@ -3136,15 +3136,15 @@ export function renderWebDashboard(): string {
           // Render fallback passkey UI if iframe encounters connection or rendering issues
           const renderInteractivePasskeyBox = () => {
             let html = '<div style="padding:20px; background:#FFFFFF; border-radius:12px; border:1px solid rgba(13,148,136,0.2); text-align:center; box-shadow:0 4px 12px rgba(0,0,0,0.03);">';
-            html += '<div style="font-size:36px; margin-bottom:8px;">👆</div>';
+            html += '<div style="display:flex; justify-content:center; align-items:center; margin-bottom:8px;"><svg width="36" height="36" viewBox="0 0 24 24" fill="none" stroke="var(--prava)" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="11" width="18" height="11" rx="2" ry="2"/><path d="M7 11V7a5 5 0 0 1 10 0v4"/></svg></div>';
             html += '<div style="font-size:15px; font-weight:700; color:var(--text);">Touch ID / Face ID Passkey</div>';
             html += '<div style="font-size:12px; color:var(--text-muted); margin:6px 0 16px;">Authorize <b>₹' + totalStr + '</b> on behalf of <b>' + escapeHtml(activeUser.displayName) + '</b></div>';
             html += '<div style="display:flex; justify-content:center; gap:8px; margin-bottom:16px;">';
-            html += '<span class="item-platform-chip" style="font-size:11px; padding:3px 8px; background:#F0FDF4; color:#047857; border:1px solid #BBF7D0;">✓ Cryptographic FIDO2 Gate</span>';
-            html += '<span class="item-platform-chip" style="font-size:11px; padding:3px 8px; background:#EFF6FF; color:#1D4ED8; border:1px solid #BFDBFE;">🛡️ AP2 Scoped Mandate</span>';
+            html += '<span class="item-platform-chip" style="font-size:11px; padding:3px 8px; background:#F0FDF4; color:#047857; border:1px solid #BBF7D0;">Cryptographic FIDO2 Gate</span>';
+            html += '<span class="item-platform-chip" style="font-size:11px; padding:3px 8px; background:#EFF6FF; color:#1D4ED8; border:1px solid #BFDBFE;">AP2 Scoped Mandate</span>';
             html += '</div>';
             html += '<button type="button" class="btn-submit" style="background:var(--prava); width:100%; padding:12px; font-weight:700; border-radius:8px; color:#FFF; border:none; cursor:pointer; font-size:14px;" onclick="window._executePravaOrder()">';
-            html += '🔒 Approve & Confirm Order (₹' + totalStr + ')';
+            html += 'Approve & Confirm Order (₹' + totalStr + ')';
             html += '</button></div>';
             container.innerHTML = html;
           };
@@ -3256,22 +3256,22 @@ export function renderWebDashboard(): string {
       const merchantName = isZepto ? 'Zepto' : (order.merchantName || 'Swiggy Instamart');
       const merchantBadgeColor = isZepto ? '#6D28D9' : '#C2410C';
 
-      let html = '<div class="msg-avatar">⚡</div><div class="msg-bubble">';
+      let html = '<div class="msg-avatar">AI</div><div class="msg-bubble">';
       html += '<div class="receipt-card">';
       html += '<div class="receipt-header" style="color:var(--text); display:flex; align-items:center; gap:8px;">';
-      html += '<span style="color:#047857; font-size:18px;">✓</span> Order Confirmed on <span style="color:' + merchantBadgeColor + '; font-weight:800;">' + merchantName + '</span>!';
+      html += '<span style="color:#047857; font-weight:700;">Order Confirmed</span> on <span style="color:' + merchantBadgeColor + '; font-weight:800;">' + merchantName + '</span>!';
       html += '</div>';
       html += '<div style="font-size:13px; color:var(--text-muted); margin-bottom:12px;">Your quick-commerce order has been autonomously placed and confirmed on behalf of <b>' + escapeHtml(recipient.name) + '</b> via <b>Prava AP2 Biometric Passkey</b>.</div>';
       html += '<div class="receipt-grid">';
       html += '<div><b>Order ID:</b> <span style="font-family:monospace; color:var(--primary); font-weight:700;">' + (order.orderId || 'ORD_CONFIRMED') + '</span></div>';
-      html += '<div><b>Status:</b> <span style="color:#047857; font-weight:700;">✓ Confirmed & Dispatched</span></div>';
+      html += '<div><b>Status:</b> <span style="color:#047857; font-weight:700;">Confirmed & Dispatched</span></div>';
       html += '<div><b>Total Paid:</b> <span style="font-weight:800; color:var(--text);">₹' + total + '</span></div>';
-      html += '<div><b>Estimated Delivery:</b> <span style="font-weight:700;">⚡ ' + (order.etaMinutes || 10) + ' Mins</span></div>';
+      html += '<div><b>Estimated Delivery:</b> <span style="font-weight:700;">' + (order.etaMinutes || 10) + ' Mins</span></div>';
       html += '<div style="grid-column: span 2;"><b>Delivering to:</b> ' + escapeHtml(recipient.address) + ' (' + recipient.pincode + ')</div>';
       html += '</div>';
       html += '<div style="margin-top: 12px; font-size: 11px; color: var(--text-muted); display:flex; justify-content:space-between; align-items:center;">';
       html += '<span><b>Prava AP2 Payment Token:</b></span>';
-      html += '<span style="color:var(--prava); font-weight:600;">🔒 Single-Use Scoped Reference</span>';
+      html += '<span style="color:var(--prava); font-weight:600;">Single-Use Scoped Reference</span>';
       html += '</div>';
       html += '<div class="token-proof" style="background:#F0FDFA; border:1px solid #CCFBF1; color:#0F766E; font-size:11px; padding:6px 10px; border-radius:6px; font-family:monospace; margin-top:4px;">' + (data.pravaTokenRef || 'prv_tok_ap2_verified') + '</div>';
       html += '</div>';
