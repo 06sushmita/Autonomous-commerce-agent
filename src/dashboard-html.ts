@@ -1,16 +1,17 @@
 /**
  * Autonomous Commerce Agent (ACA) - Web Dashboard
  *
- * Theme Specification:
- * - Background: Warm ivory / off-white (#FBF9F5, #FAF8F5)
- * - Structural Elements (Header/Nav): Deep charcoal (#18191B)
- * - Primary Accent: Muted orange (#E05A1C / #EA6A2A - Swiggy warmth)
- * - Secondary Accent: Soft violet (#7C5CFC - Zepto touch)
- * - Biometric / Security: Deep teal (#0D9488 - Prava AP2)
- * - Typography: Geist / Inter & Plus Jakarta Sans
- * - Cards: Flat, subtle borders (crisp #FFFFFF with 1px border rgba(0,0,0,0.08))
- * - Buttons: Simple, solid colors (no heavy multi-stop gradients)
- * - Layout: Spacious, structured (generous spacing and hierarchy)
+ * Theme Specification (Designeer.xyz Inspired):
+ * - Aesthetic: Modern Tech-Editorial & Developer Dark Mode, Precision Bento Grid, Glassmorphism
+ * - Palette: Deep Matte Obsidian (#060608, #090A0F) with ambient radial glows & technical grid mesh
+ * - Structural Elements: Frosted glass (rgba(9, 10, 15, 0.88) with backdrop-filter: blur(20px))
+ * - Primary Accent: Signature Designeer Lavender / Violet (#A78BFA / #8B5CF6)
+ * - Swiggy Accent: Sunset Amber / Coral (#FB923C / #F97316)
+ * - Zepto Accent: Digital Violet (#A78BFA / #8B5CF6)
+ * - Biometric / Security: Mint & Emerald (#2DD4BF / #10B981 - Prava AP2)
+ * - Typography: Funnel Display, Funnel Sans, Plus Jakarta Sans, Inter & JetBrains Mono
+ * - Cards: High-end Bento surfaces with crisp 1px borders (rgba(255,255,255,0.08)) and subtle rim glow
+ * - Badges & Controls: Capsule pills (rounded-full), micro-interactions, active scale [0.98]
  */
 
 export function renderWebDashboard(): string {
@@ -19,73 +20,86 @@ export function renderWebDashboard(): string {
 <head>
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
-  <title>Autonomous Commerce Agent — Swiggy & Zepto Real-Time Ordering</title>
+  <title>Autonomous Commerce Agent — Real-Time Quick Commerce</title>
   <link rel="preconnect" href="https://fonts.googleapis.com">
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
-  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&family=JetBrains+Mono:wght@400;500;600&family=Plus+Jakarta+Sans:wght@500;600;700;800&display=swap" rel="stylesheet">
+  <link href="https://fonts.googleapis.com/css2?family=Funnel+Display:wght@400;500;600;700;800&family=Funnel+Sans:wght@400;500;600;700&family=Inter:wght@400;500;600;700;800&family=JetBrains+Mono:wght@400;500;600;700&family=Plus+Jakarta+Sans:wght@500;600;700;800&display=swap" rel="stylesheet">
   <script type="module">
     import { PravaSDK } from '/prava-sdk.js';
     window.PravaSDK = PravaSDK;
   </script>
   <style>
     :root {
-      /* Warm Ivory & Deep Charcoal Editorial Palette */
-      --bg: #FBF9F5;
-      --bg-canvas: #FAF8F5;
-      --bg-alt: #F4F1EA;
-      --card-bg: #FFFFFF;
-      --card-border: rgba(0, 0, 0, 0.08);
-      --card-border-hover: rgba(224, 90, 28, 0.4);
+      /* Designeer.xyz Dark Obsidian & Violet Palette */
+      --bg: #060608;
+      --bg-canvas: #090A0F;
+      --bg-alt: #0D0E15;
+      --card-bg: rgba(16, 17, 25, 0.82);
+      --card-bg-solid: #11121A;
+      --card-border: rgba(255, 255, 255, 0.08);
+      --card-border-hover: rgba(167, 139, 250, 0.45);
 
-      /* Structural Elements: Deep Charcoal */
-      --header-bg: #18191B;
+      /* Structural Elements: Frosted Obsidian Glass */
+      --header-bg: rgba(9, 10, 15, 0.88);
       --header-border: rgba(255, 255, 255, 0.08);
-      --header-text: #F9FAFB;
-      --charcoal: #18191B;
-      --charcoal-hover: #26292E;
+      --header-text: #F8FAFC;
+      --charcoal: #14151E;
+      --charcoal-hover: #1E202C;
 
-      /* Primary Accent: Muted Orange (Swiggy Warmth) */
-      --primary: #E05A1C;
-      --primary-hover: #C84E14;
-      --primary-light: rgba(224, 90, 28, 0.08);
-      --swiggy: #E05A1C;
-      --swiggy-glow: rgba(224, 90, 28, 0.12);
+      /* Primary Accent: Signature Designeer Lavender/Violet (#A78BFA) */
+      --primary: #A78BFA;
+      --primary-hover: #C4B5FD;
+      --primary-light: rgba(167, 139, 250, 0.12);
+      --primary-glow: rgba(167, 139, 250, 0.25);
 
-      /* Secondary Accent: Soft Violet (Zepto Touch) */
-      --secondary: #7C5CFC;
-      --secondary-hover: #6944F3;
-      --secondary-light: rgba(124, 92, 252, 0.08);
-      --zepto: #7C5CFC;
-      --zepto-glow: rgba(124, 92, 252, 0.12);
+      /* Swiggy Instamart Warmth (Sunset Coral) */
+      --swiggy: #FB923C;
+      --swiggy-hover: #F97316;
+      --swiggy-light: rgba(251, 146, 60, 0.12);
+      --swiggy-glow: rgba(251, 146, 60, 0.2);
 
-      /* Biometric & Security: Refined Deep Teal / Emerald */
-      --prava: #0D9488;
-      --prava-light: rgba(13, 148, 136, 0.1);
+      /* Zepto Violet Touch */
+      --secondary: #A78BFA;
+      --secondary-hover: #8B5CF6;
+      --secondary-light: rgba(167, 139, 250, 0.12);
+      --zepto: #A78BFA;
+      --zepto-glow: rgba(167, 139, 250, 0.2);
+
+      /* Prava AP2 Security: Mint & Emerald */
+      --prava: #2DD4BF;
+      --prava-light: rgba(45, 212, 191, 0.12);
+      --prava-glow: rgba(45, 212, 191, 0.25);
 
       /* Typography & Text */
-      --text: #18191B;
-      --text-muted: #5B616E;
-      --text-dim: #8E95A5;
-      --surface-subtle: #F5F2EB;
-      --surface-border: rgba(0, 0, 0, 0.06);
+      --text: #F8FAFC;
+      --text-muted: #94A3B8;
+      --text-dim: #64748B;
+      --surface-subtle: #14151E;
+      --surface-border: rgba(255, 255, 255, 0.07);
 
       /* Geometry & Elevation */
       --radius-sm: 8px;
-      --radius-md: 12px;
-      --radius-lg: 16px;
-      --shadow-sm: 0 1px 3px rgba(0, 0, 0, 0.04), 0 1px 2px rgba(0, 0, 0, 0.02);
-      --shadow-md: 0 4px 16px rgba(0, 0, 0, 0.05);
-      --shadow-lg: 0 12px 36px rgba(0, 0, 0, 0.08);
+      --radius-md: 14px;
+      --radius-lg: 20px;
+      --radius-pill: 9999px;
+      --shadow-sm: 0 2px 8px rgba(0, 0, 0, 0.4);
+      --shadow-md: 0 8px 28px rgba(0, 0, 0, 0.55), 0 0 0 1px rgba(255, 255, 255, 0.06);
+      --shadow-lg: 0 24px 64px -12px rgba(0, 0, 0, 0.8), 0 0 0 1px rgba(255, 255, 255, 0.08);
+      --shadow-glow: 0 0 32px -4px rgba(167, 139, 250, 0.25);
     }
 
     * { box-sizing: border-box; margin: 0; padding: 0; }
     body {
       background-color: var(--bg);
       background-image:
-        radial-gradient(at 100% 0%, rgba(224, 90, 28, 0.03) 0px, transparent 45%),
-        radial-gradient(at 0% 100%, rgba(124, 92, 252, 0.025) 0px, transparent 45%);
+        radial-gradient(ellipse at 50% -10%, rgba(167, 139, 250, 0.12) 0%, transparent 60%),
+        radial-gradient(circle at 100% 100%, rgba(251, 146, 60, 0.04) 0%, transparent 40%),
+        radial-gradient(circle at 0% 100%, rgba(45, 212, 191, 0.04) 0%, transparent 40%),
+        linear-gradient(rgba(255, 255, 255, 0.015) 1px, transparent 1px),
+        linear-gradient(90deg, rgba(255, 255, 255, 0.015) 1px, transparent 1px);
+      background-size: 100% 100%, 100% 100%, 100% 100%, 32px 32px, 32px 32px;
       color: var(--text);
-      font-family: 'Inter', 'Plus Jakarta Sans', -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
+      font-family: 'Funnel Sans', 'Plus Jakarta Sans', 'Inter', -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
       min-height: 100vh;
       display: flex;
       flex-direction: column;
@@ -94,19 +108,34 @@ export function renderWebDashboard(): string {
       -moz-osx-font-smoothing: grayscale;
     }
 
-    /* Top Navigation (Deep Charcoal with subtle contrast) */
+    /* Designeer Shimmer Animation */
+    @keyframes shimmer {
+      0% { background-position: -200% 0; }
+      100% { background-position: 200% 0; }
+    }
+    .shimmer-text {
+      background: linear-gradient(90deg, #F8FAFC 0%, #A78BFA 45%, #C4B5FD 55%, #F8FAFC 100%);
+      background-size: 200% 100%;
+      -webkit-background-clip: text;
+      -webkit-text-fill-color: transparent;
+      animation: shimmer 5s ease-in-out infinite;
+    }
+
+    /* Top Navigation (Designeer Frosted Glass) */
     header {
       background: var(--header-bg);
+      backdrop-filter: blur(20px);
+      -webkit-backdrop-filter: blur(20px);
       border-bottom: 1px solid var(--header-border);
       position: sticky;
       top: 0;
       z-index: 100;
-      padding: 16px 32px;
+      padding: 14px 32px;
       display: flex;
       align-items: center;
       justify-content: space-between;
       gap: 16px;
-      box-shadow: 0 2px 12px rgba(0, 0, 0, 0.15);
+      box-shadow: 0 4px 20px rgba(0, 0, 0, 0.4);
     }
     .brand {
       display: flex;
@@ -117,91 +146,121 @@ export function renderWebDashboard(): string {
       width: 38px;
       height: 38px;
       border-radius: var(--radius-sm);
-      background: var(--primary);
+      background: linear-gradient(135deg, #8B5CF6, #6366F1);
       display: flex;
       align-items: center;
       justify-content: center;
       font-size: 20px;
       color: #fff;
+      box-shadow: 0 0 16px rgba(139, 92, 246, 0.4);
+      border: 1px solid rgba(255, 255, 255, 0.15);
+      transition: transform 0.2s ease;
+    }
+    .brand:hover .brand-logo {
+      transform: scale(1.05);
     }
     .brand-text h1 {
+      font-family: 'Funnel Display', 'Plus Jakarta Sans', sans-serif;
       font-size: 16px;
-      font-weight: 700;
-      letter-spacing: -0.01em;
+      font-weight: 800;
+      letter-spacing: -0.02em;
       color: #FFFFFF;
     }
     .brand-text p {
       font-size: 11px;
-      color: #9CA3AF;
+      color: #94A3B8;
       font-weight: 500;
     }
     .platform-pills {
       display: flex;
       align-items: center;
-      gap: 10px;
+      gap: 8px;
     }
     .pill {
       font-size: 11px;
       font-weight: 600;
-      padding: 6px 14px;
-      border-radius: 20px;
+      padding: 5px 13px;
+      border-radius: 9999px;
       display: inline-flex;
       align-items: center;
       gap: 6px;
-      background: rgba(255, 255, 255, 0.05);
-      border: 1px solid rgba(255, 255, 255, 0.1);
-      color: #E5E7EB;
+      background: rgba(255, 255, 255, 0.04);
+      border: 1px solid rgba(255, 255, 255, 0.08);
+      color: #E2E8F0;
+      backdrop-filter: blur(8px);
+      transition: all 0.15s ease;
+    }
+    .pill:hover {
+      border-color: rgba(255, 255, 255, 0.18);
+      background: rgba(255, 255, 255, 0.06);
     }
     .pill-swiggy {
-      background: rgba(224, 90, 28, 0.16);
-      color: #FFA270;
-      border: 1px solid rgba(224, 90, 28, 0.4);
+      background: rgba(251, 146, 60, 0.08);
+      color: #FDBA74;
+      border-color: rgba(251, 146, 60, 0.25);
     }
     .pill-zepto {
-      background: rgba(124, 92, 252, 0.16);
-      color: #B49BFA;
-      border: 1px solid rgba(124, 92, 252, 0.4);
+      background: rgba(167, 139, 250, 0.08);
+      color: #C4B5FD;
+      border-color: rgba(167, 139, 250, 0.25);
     }
     .pill-prava {
-      background: rgba(13, 148, 136, 0.16);
+      background: rgba(45, 212, 191, 0.08);
       color: #5EEAD4;
-      border: 1px solid rgba(13, 148, 136, 0.4);
+      border-color: rgba(45, 212, 191, 0.25);
     }
     .status-dot {
       width: 6px;
       height: 6px;
       border-radius: 50%;
       background: currentColor;
+      position: relative;
+    }
+    .status-dot::after {
+      content: '';
+      position: absolute;
+      inset: -3px;
+      border-radius: 50%;
+      background: inherit;
+      opacity: 0.4;
+      animation: pulseRing 1.8s cubic-bezier(0.4, 0, 0.6, 1) infinite;
+    }
+    @keyframes pulseRing {
+      0%, 100% { transform: scale(1); opacity: 0.4; }
+      50% { transform: scale(1.8); opacity: 0; }
     }
 
-    /* User Profile Bar */
+    /* User Profile Bar (Designeer Capsule) */
     .user-profile-btn {
-      background: #25282C;
-      border: 1px solid rgba(255, 255, 255, 0.12);
-      border-radius: 28px;
-      padding: 6px 16px 6px 6px;
+      background: rgba(22, 24, 34, 0.85);
+      backdrop-filter: blur(12px);
+      border: 1px solid rgba(255, 255, 255, 0.1);
+      border-radius: 9999px;
+      padding: 5px 14px 5px 5px;
       display: flex;
       align-items: center;
       gap: 10px;
       cursor: pointer;
-      transition: all 0.15s ease;
+      transition: all 0.2s cubic-bezier(0.16, 1, 0.3, 1);
       color: #FFF;
     }
     .user-profile-btn:hover {
-      background: #2E3238;
-      border-color: rgba(255, 255, 255, 0.25);
+      background: rgba(30, 32, 45, 0.95);
+      border-color: rgba(167, 139, 250, 0.4);
+      box-shadow: 0 0 16px rgba(167, 139, 250, 0.2);
     }
     .user-avatar {
       width: 30px;
       height: 30px;
       border-radius: 50%;
-      background: var(--primary);
+      background: linear-gradient(135deg, #8B5CF6, #6366F1);
       color: #fff;
       display: flex;
       align-items: center;
       justify-content: center;
       font-weight: 700;
       font-size: 11px;
+      box-shadow: 0 0 8px rgba(139, 92, 246, 0.3);
     }
     .user-info {
       text-align: left;
@@ -216,7 +275,7 @@ export function renderWebDashboard(): string {
     }
     .user-loc {
       font-size: 10px;
-      color: #9CA3AF;
+      color: #94A3B8;
     }
 
     /* Main Container (Spacious, Structured) */
@@ -232,10 +291,12 @@ export function renderWebDashboard(): string {
 
     /* Active User Context Banner */
     .context-banner {
-      background: #FFFFFF;
+      background: rgba(16, 17, 25, 0.8);
+      backdrop-filter: blur(12px);
+      -webkit-backdrop-filter: blur(12px);
       border: 1px solid var(--card-border);
       border-radius: var(--radius-md);
-      padding: 16px 22px;
+      padding: 14px 20px;
       margin-bottom: 20px;
       display: flex;
       align-items: center;
@@ -255,26 +316,31 @@ export function renderWebDashboard(): string {
       color: var(--text);
     }
     .btn-auth-switch {
-      background: var(--surface-subtle);
-      border: 1px solid var(--card-border);
+      background: rgba(255, 255, 255, 0.04);
+      border: 1px solid rgba(255, 255, 255, 0.1);
       color: var(--text);
-      padding: 7px 14px;
-      border-radius: var(--radius-sm);
-      font-size: 12px;
+      padding: 6px 14px;
+      border-radius: 9999px;
+      font-size: 11px;
       font-weight: 600;
       cursor: pointer;
-      transition: all 0.15s ease;
+      transition: all 0.2s ease;
       white-space: nowrap;
+      display: inline-flex;
+      align-items: center;
+      gap: 6px;
     }
     .btn-auth-switch:hover {
-      background: var(--charcoal);
-      color: #FFF;
-      border-color: var(--charcoal);
+      background: rgba(167, 139, 250, 0.15);
+      color: #C4B5FD;
+      border-color: rgba(167, 139, 250, 0.35);
     }
 
-    /* Chat Area */
+    /* Chat Area (Designeer Bento Container) */
     .chat-container {
-      background: #FFFFFF;
+      background: rgba(13, 14, 21, 0.85);
+      backdrop-filter: blur(20px);
+      -webkit-backdrop-filter: blur(20px);
       border: 1px solid var(--card-border);
       border-radius: var(--radius-lg);
       display: flex;
@@ -291,7 +357,7 @@ export function renderWebDashboard(): string {
       display: flex;
       flex-direction: column;
       gap: 24px;
-      background: var(--bg-canvas);
+      background: transparent;
     }
 
     /* Message Bubbles */
@@ -317,17 +383,18 @@ export function renderWebDashboard(): string {
       align-items: center;
       justify-content: center;
       font-size: 16px;
-      background: #FFFFFF;
-      border: 1px solid var(--card-border);
+      background: rgba(22, 24, 34, 0.9);
+      border: 1px solid rgba(255, 255, 255, 0.1);
       box-shadow: var(--shadow-sm);
-      color: var(--charcoal);
+      color: var(--primary);
     }
     .msg-user .msg-avatar {
-      background: var(--charcoal);
+      background: linear-gradient(135deg, #8B5CF6, #6D28D9);
       color: #FFF;
       font-size: 12px;
       font-weight: 700;
       border: none;
+      box-shadow: 0 0 10px rgba(139, 92, 246, 0.4);
     }
     .msg-bubble {
       padding: 18px 22px;
@@ -336,13 +403,14 @@ export function renderWebDashboard(): string {
       line-height: 1.65;
     }
     .msg-user .msg-bubble {
-      background: var(--charcoal);
-      color: #FFFFFF;
+      background: linear-gradient(135deg, #181926, #222436);
+      color: #F8FAFC;
+      border: 1px solid rgba(255, 255, 255, 0.1);
       border-bottom-right-radius: 4px;
       box-shadow: var(--shadow-sm);
     }
     .msg-agent .msg-bubble {
-      background: #FFFFFF;
+      background: rgba(16, 17, 26, 0.92);
       border: 1px solid var(--card-border);
       color: var(--text);
       border-bottom-left-radius: 4px;
@@ -358,9 +426,9 @@ export function renderWebDashboard(): string {
       font-size: 12px;
       color: var(--text);
       padding: 10px 16px;
-      background: var(--bg);
-      border: 1px dashed var(--card-border);
-      border-radius: var(--radius-sm);
+      background: rgba(167, 139, 250, 0.08);
+      border: 1px dashed rgba(167, 139, 250, 0.35);
+      border-radius: 9999px;
       width: fit-content;
       margin-top: 8px;
     }
@@ -377,17 +445,16 @@ export function renderWebDashboard(): string {
       100% { opacity: 1; transform: scale(1.15); }
     }
 
-    /* Hero "THE ONE BEST CHOICE" Card (Flat, Structured) */
+    /* Hero "THE ONE BEST CHOICE" Card (Designeer Bento Spotlight) */
     .best-choice-card {
-      background: #FFFFFF;
-      border: 1px solid rgba(0, 0, 0, 0.1);
-      border-left: 4px solid var(--primary);
+      background: linear-gradient(180deg, rgba(20, 22, 33, 0.92) 0%, rgba(14, 15, 23, 0.96) 100%);
+      border: 1px solid rgba(167, 139, 250, 0.28);
       border-radius: var(--radius-md);
       padding: 22px 24px;
       margin-top: 20px;
       margin-bottom: 20px;
       position: relative;
-      box-shadow: var(--shadow-sm);
+      box-shadow: 0 12px 36px -6px rgba(0, 0, 0, 0.65), 0 0 24px -4px rgba(167, 139, 250, 0.12);
     }
     .best-choice-glow {
       display: none;
@@ -403,14 +470,15 @@ export function renderWebDashboard(): string {
       display: inline-flex;
       align-items: center;
       gap: 6px;
-      background: var(--primary);
+      background: linear-gradient(135deg, #8B5CF6, #6D28D9);
       color: #FFF;
       font-size: 11px;
       font-weight: 700;
       letter-spacing: 0.04em;
       text-transform: uppercase;
       padding: 5px 12px;
-      border-radius: var(--radius-sm);
+      border-radius: 9999px;
+      box-shadow: 0 0 12px rgba(139, 92, 246, 0.35);
     }
     .best-choice-body {
       display: grid;
@@ -426,9 +494,9 @@ export function renderWebDashboard(): string {
     .best-choice-img-box {
       width: 140px;
       height: 140px;
-      background: var(--bg);
-      border: 1px solid var(--card-border);
-      border-radius: var(--radius-sm);
+      background: rgba(9, 10, 16, 0.95);
+      border: 1px solid rgba(255, 255, 255, 0.08);
+      border-radius: var(--radius-md);
       display: flex;
       align-items: center;
       justify-content: center;
@@ -439,21 +507,22 @@ export function renderWebDashboard(): string {
       max-width: 100%;
       max-height: 100%;
       object-fit: contain;
-      transition: transform 0.2s ease;
+      transition: transform 0.25s cubic-bezier(0.16, 1, 0.3, 1);
     }
     .best-choice-card:hover .best-choice-img-box img {
-      transform: scale(1.04);
+      transform: scale(1.05);
     }
     .live-in-stock-tag {
       position: absolute;
       bottom: 6px;
       left: 6px;
-      background: #10B981;
-      color: #FFF;
+      background: rgba(16, 185, 129, 0.18);
+      border: 1px solid rgba(16, 185, 129, 0.4);
+      color: #34D399;
       font-size: 9px;
       font-weight: 700;
-      padding: 2px 6px;
-      border-radius: 4px;
+      padding: 2px 7px;
+      border-radius: 9999px;
       letter-spacing: 0.03em;
     }
     .best-choice-info {
@@ -495,13 +564,13 @@ export function renderWebDashboard(): string {
       text-decoration: line-through;
     }
     .discount-pill {
-      background: #FEF2F2;
-      border: 1px solid #FECACA;
-      color: #DC2626;
-      font-size: 11px;
+      background: rgba(239, 68, 68, 0.15);
+      border: 1px solid rgba(239, 68, 68, 0.35);
+      color: #F87171;
+      font-size: 10px;
       font-weight: 700;
       padding: 2px 8px;
-      border-radius: var(--radius-sm);
+      border-radius: 9999px;
     }
     .best-choice-links-row {
       display: flex;
@@ -513,29 +582,30 @@ export function renderWebDashboard(): string {
       display: inline-flex;
       align-items: center;
       gap: 6px;
-      background: var(--surface-subtle);
-      border: 1px solid var(--card-border);
+      background: rgba(255, 255, 255, 0.05);
+      border: 1px solid rgba(255, 255, 255, 0.1);
       color: var(--text);
       font-size: 12px;
       font-weight: 600;
-      padding: 8px 14px;
-      border-radius: var(--radius-sm);
+      padding: 8px 16px;
+      border-radius: 9999px;
       text-decoration: none;
-      transition: all 0.15s ease;
+      transition: all 0.2s ease;
     }
     .btn-product-external:hover {
-      background: var(--charcoal);
-      color: #FFF;
-      border-color: var(--charcoal);
+      background: rgba(167, 139, 250, 0.15);
+      border-color: rgba(167, 139, 250, 0.4);
+      color: #C4B5FD;
+      box-shadow: 0 0 12px rgba(167, 139, 250, 0.2);
     }
     .best-choice-reason {
       font-size: 12px;
       color: var(--text-muted);
       line-height: 1.55;
       padding: 12px 16px;
-      background: var(--bg);
+      background: rgba(9, 10, 16, 0.6);
       border-radius: var(--radius-sm);
-      border: 1px solid var(--card-border);
+      border: 1px solid rgba(255, 255, 255, 0.06);
     }
     .best-choice-footer {
       margin-top: 18px;
@@ -564,23 +634,24 @@ export function renderWebDashboard(): string {
       gap: 16px;
     }
     .product-card {
-      background: #FFFFFF;
+      background: rgba(16, 17, 26, 0.85);
       border: 1px solid var(--card-border);
-      border-radius: var(--radius-sm);
+      border-radius: var(--radius-md);
       padding: 14px;
       display: flex;
       flex-direction: column;
       justify-content: space-between;
-      transition: border-color 0.15s ease, box-shadow 0.15s ease;
+      transition: all 0.2s cubic-bezier(0.16, 1, 0.3, 1);
       position: relative;
     }
     .product-card:hover {
-      border-color: var(--primary);
-      box-shadow: var(--shadow-sm);
+      border-color: rgba(167, 139, 250, 0.35);
+      transform: translateY(-2px);
+      box-shadow: 0 12px 28px -4px rgba(0, 0, 0, 0.6), 0 0 0 1px rgba(167, 139, 250, 0.2);
     }
     .card-active-best {
-      border-color: var(--primary) !important;
-      background: #FFFAF6 !important;
+      border-color: rgba(167, 139, 250, 0.5) !important;
+      background: rgba(24, 25, 38, 0.9) !important;
     }
     .product-card-top-pill {
       display: flex;
@@ -592,14 +663,14 @@ export function renderWebDashboard(): string {
       width: 100%;
       height: 110px;
       object-fit: contain;
-      background: var(--bg);
+      background: rgba(9, 10, 16, 0.95);
       border-radius: var(--radius-sm);
       margin-bottom: 10px;
       display: flex;
       align-items: center;
       justify-content: center;
       font-size: 30px;
-      border: 1px solid var(--card-border);
+      border: 1px solid rgba(255, 255, 255, 0.06);
     }
     .product-img img {
       width: 100%;
@@ -656,11 +727,11 @@ export function renderWebDashboard(): string {
     .eta-badge {
       font-size: 10px;
       font-weight: 600;
-      padding: 2px 6px;
-      border-radius: 4px;
-      background: var(--surface-subtle);
+      padding: 3px 8px;
+      border-radius: 9999px;
+      background: rgba(255, 255, 255, 0.05);
       color: var(--text-muted);
-      border: 1px solid var(--card-border);
+      border: 1px solid rgba(255, 255, 255, 0.08);
     }
     .product-card-actions {
       display: flex;
@@ -681,25 +752,25 @@ export function renderWebDashboard(): string {
       text-decoration: underline;
     }
     .btn-select-alt {
-      background: var(--surface-subtle);
-      border: 1px solid var(--card-border);
+      background: rgba(255, 255, 255, 0.05);
+      border: 1px solid rgba(255, 255, 255, 0.1);
       color: var(--text);
       font-size: 11px;
       font-weight: 600;
       padding: 5px 12px;
-      border-radius: var(--radius-sm);
+      border-radius: 9999px;
       cursor: pointer;
       transition: all 0.15s ease;
     }
     .btn-select-alt:hover {
       background: var(--primary);
-      color: #FFF;
+      color: #060608;
       border-color: var(--primary);
     }
 
     /* Recommendation & Passkey Checkout Card */
     .proposal-card {
-      background: #FFFFFF;
+      background: rgba(16, 17, 26, 0.88);
       border: 1px solid var(--card-border);
       border-radius: var(--radius-md);
       padding: 18px;
@@ -726,7 +797,7 @@ export function renderWebDashboard(): string {
       margin-bottom: 12px;
     }
     .proposal-breakdown {
-      background: var(--bg);
+      background: rgba(9, 10, 16, 0.65);
       border: 1px solid var(--card-border);
       border-radius: var(--radius-sm);
       padding: 12px 16px;
@@ -742,7 +813,7 @@ export function renderWebDashboard(): string {
       color: var(--text);
     }
     .fee-breakdown-card {
-      background: var(--bg);
+      background: rgba(9, 10, 16, 0.65);
       border: 1px solid var(--card-border);
       border-radius: var(--radius-sm);
       padding: 14px 18px;
@@ -771,25 +842,25 @@ export function renderWebDashboard(): string {
       font-size: 10px;
       font-weight: 600;
       padding: 2px 8px;
-      border-radius: 4px;
+      border-radius: 9999px;
     }
     .verified-price-tag.verified {
-      background: #ECFDF5;
-      color: #047857;
-      border: 1px solid #A7F3D0;
+      background: rgba(16, 185, 129, 0.15);
+      color: #34D399;
+      border: 1px solid rgba(16, 185, 129, 0.35);
     }
     .verified-price-tag.unverified {
-      background: #FEF2F2;
-      color: #DC2626;
-      border: 1px solid #FECACA;
+      background: rgba(239, 68, 68, 0.15);
+      color: #F87171;
+      border: 1px solid rgba(239, 68, 68, 0.35);
     }
     .budget-alert-banner {
-      background: #FFFBEB;
-      border: 1px solid #FDE68A;
+      background: rgba(245, 158, 11, 0.12);
+      border: 1px solid rgba(245, 158, 11, 0.3);
       border-radius: var(--radius-sm);
       padding: 12px 16px;
       margin-bottom: 14px;
-      color: #B45309;
+      color: #FBBF24;
       font-size: 12px;
       line-height: 1.45;
     }
@@ -801,52 +872,56 @@ export function renderWebDashboard(): string {
     }
     .platform-tab-btn {
       flex: 1;
-      padding: 10px 14px;
-      border-radius: var(--radius-sm);
-      border: 1px solid var(--card-border);
-      background: var(--bg);
+      padding: 12px 16px;
+      border-radius: var(--radius-md);
+      border: 1px solid rgba(255, 255, 255, 0.08);
+      background: rgba(14, 15, 22, 0.7);
       cursor: pointer;
       display: flex;
       flex-direction: column;
       align-items: flex-start;
-      gap: 3px;
+      gap: 4px;
       transition: all 0.2s ease;
       position: relative;
       text-align: left;
     }
     .platform-tab-btn:hover {
-      border-color: var(--primary);
+      border-color: rgba(255, 255, 255, 0.18);
+      background: rgba(20, 22, 32, 0.85);
     }
     .platform-tab-btn.active {
-      border-color: var(--primary);
-      background: #FFFFFF;
-      box-shadow: 0 2px 8px rgba(0, 0, 0, 0.06);
+      background: rgba(22, 24, 35, 0.95);
+      box-shadow: 0 4px 16px rgba(0, 0, 0, 0.4);
     }
     .platform-tab-btn.active.swiggy-active {
-      border-color: var(--swiggy);
+      border-color: #F97316;
       border-width: 2px;
+      background: rgba(249, 115, 22, 0.12);
+      box-shadow: 0 0 20px rgba(249, 115, 22, 0.2);
     }
     .platform-tab-btn.active.zepto-active {
-      border-color: var(--zepto);
+      border-color: #8B5CF6;
       border-width: 2px;
+      background: rgba(139, 92, 246, 0.12);
+      box-shadow: 0 0 20px rgba(139, 92, 246, 0.2);
     }
     .tab-badge {
       font-size: 9px;
       font-weight: 800;
       letter-spacing: 0.05em;
       text-transform: uppercase;
-      padding: 2px 6px;
-      border-radius: 4px;
+      padding: 2px 7px;
+      border-radius: 9999px;
     }
     .tab-badge.badge-optimal {
-      background: #ECFDF5;
-      color: #047857;
-      border: 1px solid #A7F3D0;
+      background: rgba(16, 185, 129, 0.2);
+      color: #34D399;
+      border: 1px solid rgba(16, 185, 129, 0.4);
     }
     .tab-badge.badge-alt {
-      background: var(--surface-subtle);
+      background: rgba(255, 255, 255, 0.05);
       color: var(--text-dim);
-      border: 1px solid var(--card-border);
+      border: 1px solid rgba(255, 255, 255, 0.08);
     }
     .tab-header-row {
       display: flex;
@@ -868,9 +943,9 @@ export function renderWebDashboard(): string {
       color: var(--text-muted);
     }
     .savings-callout-banner {
-      background: #ECFDF5;
-      border: 1px solid #A7F3D0;
-      color: #065F46;
+      background: rgba(16, 185, 129, 0.1);
+      border: 1px solid rgba(16, 185, 129, 0.3);
+      color: #34D399;
       border-radius: var(--radius-sm);
       padding: 10px 14px;
       font-size: 12px;
@@ -884,7 +959,7 @@ export function renderWebDashboard(): string {
       border: 1px solid var(--card-border);
       border-radius: var(--radius-sm);
       overflow: hidden;
-      background: #FFFFFF;
+      background: rgba(13, 14, 21, 0.95);
     }
     .cost-comparison-table {
       width: 100%;
@@ -902,7 +977,7 @@ export function renderWebDashboard(): string {
     }
     .cost-comparison-table td {
       padding: 8px 12px;
-      border-bottom: 1px solid var(--card-border);
+      border-bottom: 1px solid rgba(255, 255, 255, 0.05);
       color: var(--text);
     }
     .cost-comparison-table tr:last-child td {
@@ -927,14 +1002,14 @@ export function renderWebDashboard(): string {
       display: inline-block;
       font-size: 10px;
       font-weight: 700;
-      color: #047857;
-      background: #ECFDF5;
-      padding: 1px 6px;
-      border-radius: 4px;
-      border: 1px solid #A7F3D0;
+      color: #34D399;
+      background: rgba(16, 185, 129, 0.15);
+      padding: 2px 7px;
+      border-radius: 9999px;
+      border: 1px solid rgba(16, 185, 129, 0.35);
     }
     .cost-comparison-table .total-row td {
-      background: var(--bg);
+      background: rgba(22, 24, 35, 0.85);
       font-weight: 800;
       font-size: 14px;
       border-top: 2px solid var(--card-border);
@@ -950,18 +1025,18 @@ export function renderWebDashboard(): string {
       display: inline-flex;
       align-items: center;
       gap: 6px;
-      padding: 4px 10px;
-      border-radius: 6px;
+      padding: 5px 12px;
+      border-radius: 9999px;
       font-size: 11px;
       border: 1px solid var(--card-border);
-      background: #FFFFFF;
+      background: rgba(22, 24, 34, 0.7);
     }
     .btn-passkey {
-      background: var(--primary);
+      background: linear-gradient(135deg, #8B5CF6, #6366F1);
       color: #FFF;
       border: none;
-      border-radius: var(--radius-sm);
-      padding: 14px 20px;
+      border-radius: 9999px;
+      padding: 14px 22px;
       font-weight: 700;
       font-size: 14px;
       width: 100%;
@@ -970,17 +1045,21 @@ export function renderWebDashboard(): string {
       align-items: center;
       justify-content: center;
       gap: 10px;
-      transition: background-color 0.15s ease;
-      box-shadow: var(--shadow-sm);
+      transition: all 0.2s cubic-bezier(0.16, 1, 0.3, 1);
+      box-shadow: 0 4px 20px rgba(139, 92, 246, 0.35);
     }
-    .btn-passkey:hover {
-      background: var(--primary-hover);
+    .btn-passkey:hover:not(:disabled) {
+      transform: translateY(-1px);
+      box-shadow: 0 6px 28px rgba(139, 92, 246, 0.55);
+    }
+    .btn-passkey:active:not(:disabled) {
+      transform: scale(0.98);
     }
 
     /* Order Receipt */
     .receipt-card {
-      background: #F0FDF4;
-      border: 1px solid #BBF7D0;
+      background: rgba(16, 185, 129, 0.08);
+      border: 1px solid rgba(16, 185, 129, 0.3);
       border-radius: var(--radius-md);
       padding: 20px;
       margin-top: 14px;
@@ -992,7 +1071,7 @@ export function renderWebDashboard(): string {
       gap: 8px;
       font-weight: 700;
       font-size: 15px;
-      color: #166534;
+      color: #34D399;
       margin-bottom: 12px;
     }
     .receipt-grid {
@@ -1005,61 +1084,69 @@ export function renderWebDashboard(): string {
     .token-proof {
       margin-top: 10px;
       padding: 8px 12px;
-      background: #FFFFFF;
-      border: 1px solid #DCFCE7;
+      background: rgba(9, 10, 16, 0.85);
+      border: 1px solid rgba(16, 185, 129, 0.25);
       border-radius: var(--radius-sm);
       font-family: 'JetBrains Mono', monospace;
       font-size: 11px;
-      color: #166534;
+      color: #6EE7B7;
       word-break: break-all;
     }
 
-    /* Chat Input Bar */
+    /* Chat Input Bar (Designeer Floating Capsule) */
     .chat-input-bar {
-      padding: 20px 28px;
+      padding: 18px 24px;
       border-top: 1px solid var(--card-border);
-      background: #FFFFFF;
+      background: rgba(11, 12, 18, 0.92);
+      backdrop-filter: blur(16px);
       display: flex;
       flex-direction: column;
-      gap: 14px;
+      gap: 12px;
     }
     .input-wrapper {
       display: flex;
       align-items: center;
-      gap: 12px;
+      gap: 10px;
+      position: relative;
     }
     .chat-input {
       flex: 1;
-      background: var(--bg);
-      border: 1px solid var(--card-border);
+      background: rgba(22, 24, 35, 0.85);
+      border: 1px solid rgba(255, 255, 255, 0.1);
       color: var(--text);
-      padding: 14px 18px;
-      border-radius: var(--radius-sm);
+      padding: 13px 20px;
+      border-radius: 9999px;
       font-size: 14px;
       font-family: inherit;
       outline: none;
-      transition: border-color 0.15s ease, background-color 0.15s ease;
+      transition: all 0.2s cubic-bezier(0.16, 1, 0.3, 1);
     }
     .chat-input:focus {
       border-color: var(--primary);
-      background: #FFFFFF;
+      background: rgba(26, 28, 42, 0.95);
+      box-shadow: 0 0 0 3px rgba(167, 139, 250, 0.2), 0 0 16px rgba(167, 139, 250, 0.15);
     }
     .btn-send {
-      background: var(--primary);
+      background: linear-gradient(135deg, #8B5CF6, #6366F1);
       color: #FFF;
       border: none;
-      border-radius: var(--radius-sm);
-      padding: 14px 24px;
+      border-radius: 9999px;
+      padding: 13px 22px;
       font-weight: 700;
-      font-size: 14px;
+      font-size: 13px;
       cursor: pointer;
       display: flex;
       align-items: center;
       gap: 8px;
-      transition: background-color 0.15s ease;
+      transition: all 0.2s cubic-bezier(0.16, 1, 0.3, 1);
+      box-shadow: 0 2px 12px rgba(139, 92, 246, 0.35);
     }
     .btn-send:hover {
-      background: var(--primary-hover);
+      transform: translateY(-1px);
+      box-shadow: 0 4px 20px rgba(139, 92, 246, 0.55);
+    }
+    .btn-send:active {
+      transform: scale(0.97);
     }
     .quick-chips {
       display: flex;
@@ -1067,13 +1154,17 @@ export function renderWebDashboard(): string {
       gap: 8px;
       overflow-x: auto;
       padding-bottom: 2px;
+      scrollbar-width: none;
+    }
+    .quick-chips::-webkit-scrollbar {
+      display: none;
     }
     .chip {
-      background: var(--bg);
-      border: 1px solid var(--card-border);
+      background: rgba(255, 255, 255, 0.04);
+      border: 1px solid rgba(255, 255, 255, 0.08);
       color: var(--text-muted);
       padding: 6px 14px;
-      border-radius: 20px;
+      border-radius: 9999px;
       font-size: 11px;
       font-weight: 500;
       cursor: pointer;
@@ -1081,17 +1172,19 @@ export function renderWebDashboard(): string {
       transition: all 0.15s ease;
     }
     .chip:hover {
-      color: var(--text);
-      background: var(--surface-subtle);
-      border-color: rgba(0, 0, 0, 0.15);
+      color: #FFF;
+      background: rgba(167, 139, 250, 0.12);
+      border-color: rgba(167, 139, 250, 0.35);
+      transform: translateY(-1px);
     }
 
-    /* Modals (Clean White, Subtle Borders & Scrollable) */
+    /* Modals (Designeer Dark Obsidian) */
     .modal-overlay {
       position: fixed;
       inset: 0;
-      background: rgba(24, 25, 27, 0.6);
-      backdrop-filter: blur(5px);
+      background: rgba(4, 5, 8, 0.82);
+      backdrop-filter: blur(16px);
+      -webkit-backdrop-filter: blur(16px);
       z-index: 1000;
       display: none;
       align-items: center;
@@ -1101,12 +1194,12 @@ export function renderWebDashboard(): string {
       -webkit-overflow-scrolling: touch;
     }
     .modal-content {
-      background: #FFFFFF;
-      border: 1px solid var(--card-border);
+      background: #0E0F16;
+      border: 1px solid rgba(255, 255, 255, 0.12);
       border-radius: var(--radius-lg);
       width: 100%;
       max-width: 520px;
-      box-shadow: var(--shadow-lg);
+      box-shadow: 0 24px 64px -12px rgba(0, 0, 0, 0.85), 0 0 0 1px rgba(255, 255, 255, 0.08);
       display: flex;
       flex-direction: column;
       max-height: calc(100vh - 48px);
@@ -1115,16 +1208,17 @@ export function renderWebDashboard(): string {
     }
     .modal-header {
       padding: 20px 24px;
-      border-bottom: 1px solid var(--card-border);
+      border-bottom: 1px solid rgba(255, 255, 255, 0.08);
       display: flex;
       align-items: center;
       justify-content: space-between;
       flex-shrink: 0;
-      background: #FFFFFF;
+      background: #0E0F16;
       border-top-left-radius: var(--radius-lg);
       border-top-right-radius: var(--radius-lg);
     }
     .modal-header h2 {
+      font-family: 'Funnel Display', 'Plus Jakarta Sans', sans-serif;
       font-size: 17px;
       font-weight: 700;
       color: var(--text);
@@ -1135,14 +1229,15 @@ export function renderWebDashboard(): string {
       color: var(--text-dim);
       font-size: 18px;
       cursor: pointer;
+      transition: color 0.15s ease;
     }
     .modal-close:hover {
       color: var(--text);
     }
     .modal-tabs {
       display: flex;
-      border-bottom: 1px solid var(--card-border);
-      background: var(--bg);
+      border-bottom: 1px solid rgba(255, 255, 255, 0.08);
+      background: rgba(14, 15, 22, 0.9);
       flex-shrink: 0;
     }
     .tab-btn {
@@ -1160,7 +1255,7 @@ export function renderWebDashboard(): string {
     .tab-btn.active {
       color: var(--primary);
       border-bottom-color: var(--primary);
-      background: #FFFFFF;
+      background: rgba(167, 139, 250, 0.06);
     }
     .modal-body {
       padding: 24px;
@@ -1168,7 +1263,7 @@ export function renderWebDashboard(): string {
       flex: 1 1 auto;
       max-height: calc(100vh - 160px);
       scrollbar-width: thin;
-      scrollbar-color: rgba(0, 0, 0, 0.2) transparent;
+      scrollbar-color: rgba(255, 255, 255, 0.2) transparent;
       overscroll-behavior: contain;
     }
     .modal-body::-webkit-scrollbar {
@@ -1178,11 +1273,11 @@ export function renderWebDashboard(): string {
       background: transparent;
     }
     .modal-body::-webkit-scrollbar-thumb {
-      background: rgba(0, 0, 0, 0.18);
+      background: rgba(255, 255, 255, 0.15);
       border-radius: 4px;
     }
     .modal-body::-webkit-scrollbar-thumb:hover {
-      background: rgba(0, 0, 0, 0.32);
+      background: rgba(255, 255, 255, 0.28);
     }
 
     .form-group {
@@ -1199,19 +1294,20 @@ export function renderWebDashboard(): string {
     }
     .form-group input, .form-group textarea {
       width: 100%;
-      background: var(--bg);
-      border: 1px solid var(--card-border);
+      background: rgba(22, 24, 34, 0.85);
+      border: 1px solid rgba(255, 255, 255, 0.1);
       color: var(--text);
-      padding: 11px 14px;
+      padding: 12px 16px;
       border-radius: var(--radius-sm);
       font-size: 13px;
       font-family: inherit;
       outline: none;
-      transition: border-color 0.15s ease;
+      transition: all 0.15s ease;
     }
     .form-group input:focus, .form-group textarea:focus {
       border-color: var(--primary);
-      background: #FFFFFF;
+      background: rgba(26, 28, 42, 0.95);
+      box-shadow: 0 0 0 3px rgba(167, 139, 250, 0.2);
     }
     .quick-preset-cards {
       display: grid;
@@ -1220,8 +1316,8 @@ export function renderWebDashboard(): string {
       margin-bottom: 16px;
     }
     .preset-card {
-      background: var(--bg);
-      border: 1px solid var(--card-border);
+      background: rgba(22, 24, 34, 0.7);
+      border: 1px solid rgba(255, 255, 255, 0.08);
       border-radius: var(--radius-sm);
       padding: 12px;
       cursor: pointer;
@@ -1229,8 +1325,9 @@ export function renderWebDashboard(): string {
       transition: all 0.15s ease;
     }
     .preset-card:hover {
-      border-color: var(--primary);
-      background: #FFFFFF;
+      border-color: rgba(167, 139, 250, 0.4);
+      background: rgba(28, 30, 44, 0.85);
+      transform: translateY(-1px);
     }
     .preset-card .preset-name {
       font-size: 12px;
@@ -1244,18 +1341,23 @@ export function renderWebDashboard(): string {
     .btn-submit {
       width: 100%;
       padding: 13px;
-      background: var(--primary);
+      background: linear-gradient(135deg, #8B5CF6, #6366F1);
       color: #FFF;
       border: none;
-      border-radius: var(--radius-sm);
+      border-radius: 9999px;
       font-weight: 700;
       font-size: 14px;
       cursor: pointer;
       margin-top: 10px;
-      transition: background-color 0.15s ease;
+      box-shadow: 0 4px 16px rgba(139, 92, 246, 0.35);
+      transition: all 0.2s cubic-bezier(0.16, 1, 0.3, 1);
     }
     .btn-submit:hover {
-      background: var(--primary-hover);
+      transform: translateY(-1px);
+      box-shadow: 0 6px 24px rgba(139, 92, 246, 0.55);
+    }
+    .btn-submit:active {
+      transform: scale(0.98);
     }
 
     /* Passkey Biometric Dialog */
@@ -1263,34 +1365,35 @@ export function renderWebDashboard(): string {
       display: none;
       position: fixed;
       inset: 0;
-      background: rgba(24, 25, 27, 0.65);
-      backdrop-filter: blur(4px);
+      background: rgba(4, 5, 8, 0.85);
+      backdrop-filter: blur(16px);
       z-index: 2000;
       align-items: center;
       justify-content: center;
     }
     .biometric-box {
-      background: #FFFFFF;
-      border: 1px solid var(--card-border);
+      background: #0E0F16;
+      border: 1px solid rgba(255, 255, 255, 0.12);
       border-radius: var(--radius-lg);
       padding: 32px;
       text-align: center;
-      max-width: 400px;
+      max-width: 440px;
       width: 90%;
-      box-shadow: var(--shadow-lg);
+      box-shadow: 0 24px 64px -12px rgba(0, 0, 0, 0.9), 0 0 32px rgba(167, 139, 250, 0.2);
     }
     .scanner-ring {
       width: 72px;
       height: 72px;
       margin: 0 auto 16px auto;
       border-radius: 50%;
-      border: 3px solid var(--surface-subtle);
+      border: 3px solid rgba(255, 255, 255, 0.1);
       border-top-color: var(--primary);
       display: flex;
       align-items: center;
       justify-content: center;
       font-size: 32px;
       animation: spinRing 1.2s linear infinite;
+      box-shadow: 0 0 20px rgba(167, 139, 250, 0.25);
     }
     @keyframes spinRing {
       0% { transform: rotate(0deg); }
@@ -1299,12 +1402,21 @@ export function renderWebDashboard(): string {
   </style>
 </head>
 <body>
-  <!-- Top Navigation Bar (Deep Charcoal) -->
+  <!-- Top Navigation Bar (Designeer Frosted Glass) -->
   <header>
     <a href="/" class="brand" style="text-decoration:none;">
-      <div class="brand-logo">⚡</div>
+      <div class="brand-logo">
+        <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round">
+          <path d="M6 2L3 6v14a2 2 0 0 0 2 2h14a2 2 0 0 0 2-2V6l-3-4z"/>
+          <line x1="3" y1="6" x2="21" y2="6"/>
+          <path d="M16 10a4 4 0 0 1-8 0"/>
+        </svg>
+      </div>
       <div class="brand-text">
-        <h1>Autonomous Commerce Agent</h1>
+        <h1 style="display:flex; align-items:center; gap:8px;">
+          <span class="shimmer-text">Autonomous Commerce Agent</span>
+          <span style="font-size: 10px; font-weight: 700; color: #A78BFA; background: rgba(167, 139, 250, 0.12); border: 1px solid rgba(167, 139, 250, 0.3); padding: 1px 7px; border-radius: 9999px;">v2.0</span>
+        </h1>
         <p>Swiggy Instamart + Zepto Real-Time Ordering</p>
       </div>
     </a>
@@ -1316,7 +1428,7 @@ export function renderWebDashboard(): string {
     </div>
 
     <div style="display:flex; align-items:center; gap:10px;">
-      <a href="/" class="btn-auth-switch" style="text-decoration:none; display:inline-flex; align-items:center; gap:6px; color:#D1D5DB; background:rgba(255,255,255,0.08); border-color:rgba(255,255,255,0.15); font-size:11px;">← Overview / Landing</a>
+      <a href="/" class="btn-auth-switch" style="text-decoration:none; display:inline-flex; align-items:center; gap:6px; color:#E2E8F0; font-size:11px;">← Overview / Landing</a>
       <button class="user-profile-btn" onclick="openAccountOrLoginModal()" id="navProfileBtn">
         <div class="user-avatar" id="navAvatar">👤</div>
         <div class="user-info">
@@ -1337,7 +1449,7 @@ export function renderWebDashboard(): string {
         <span>Please <b>Sign In</b> or <b>Create an Account</b> to configure your wallet budget limit and place orders.</span>
       </div>
       <div style="display: flex; gap: 8px;" id="bannerButtons">
-        <button class="btn-auth-switch" style="border-color:var(--primary); color:var(--primary); background:rgba(224,90,28,0.06);" onclick="openSignupModal()">⚡ Create Account</button>
+        <button class="btn-auth-switch" style="border-color:rgba(167,139,250,0.4); color:var(--primary); background:rgba(167,139,250,0.12);" onclick="openSignupModal()">⚡ Create Account</button>
         <button class="btn-auth-switch" onclick="openLoginModal()">👤 Sign In</button>
       </div>
     </div>
@@ -1559,7 +1671,7 @@ export function renderWebDashboard(): string {
 
       <!-- Active Account Management Tab -->
       <div class="modal-body" id="accountTab" style="display: none;">
-        <div style="background: var(--bg); padding: 16px; border-radius: var(--radius-sm); border: 1px solid var(--card-border); margin-bottom: 16px;">
+        <div style="background: rgba(22, 24, 34, 0.7); padding: 16px; border-radius: var(--radius-sm); border: 1px solid rgba(255, 255, 255, 0.08); margin-bottom: 16px;">
           <div style="display: flex; align-items: center; gap: 12px; margin-bottom: 12px;">
             <div class="user-avatar" id="accountAvatar" style="width: 42px; height: 42px; font-size: 14px;">👤</div>
             <div>
@@ -2210,7 +2322,7 @@ export function renderWebDashboard(): string {
       // Zepto Tab Button
       html += '<button type="button" class="platform-tab-btn ' + (isZeptoRec ? 'active zepto-active' : '') + '" id="tabZepto_' + sessionId + '" onclick="switchActivePlatform(&quot;' + sessionId + '&quot;, &quot;zepto&quot;)">';
       html += '<div class="tab-header-row">';
-      html += '<span class="tab-brand-name" style="color:#6D28D9;">⚡ Zepto</span>';
+      html += '<span class="tab-brand-name" style="color:#A78BFA;">⚡ Zepto</span>';
       html += isZeptoRec ? '<span class="tab-badge badge-optimal">🏆 Recommended</span>' : '<span class="tab-badge badge-alt">Alternative</span>';
       html += '</div>';
       html += '<div class="tab-price-val">₹' + zTot + '</div>';
@@ -2220,7 +2332,7 @@ export function renderWebDashboard(): string {
       // Swiggy Tab Button
       html += '<button type="button" class="platform-tab-btn ' + (!isZeptoRec ? 'active swiggy-active' : '') + '" id="tabSwiggy_' + sessionId + '" onclick="switchActivePlatform(&quot;' + sessionId + '&quot;, &quot;swiggy&quot;)">';
       html += '<div class="tab-header-row">';
-      html += '<span class="tab-brand-name" style="color:#C2410C;">🥫 Swiggy Instamart</span>';
+      html += '<span class="tab-brand-name" style="color:#FB923C;">🥫 Swiggy Instamart</span>';
       html += !isZeptoRec ? '<span class="tab-badge badge-optimal">🏆 Recommended</span>' : '<span class="tab-badge badge-alt">Alternative</span>';
       html += '</div>';
       html += '<div class="tab-price-val">₹' + sTot + '</div>';
@@ -2605,7 +2717,7 @@ export function renderWebDashboard(): string {
 
           html += '<div class="best-item-row" style="background:var(--bg); border:1px solid var(--card-border); border-radius:var(--radius-sm); padding:12px 14px; display:flex; gap:14px; align-items:center;">';
           html += '<div style="font-size:11px; font-weight:700; background:var(--charcoal); color:#fff; width:24px; height:24px; border-radius:50%; display:flex; align-items:center; justify-content:center; flex-shrink:0;">' + (i + 1) + '</div>';
-          html += '<div class="best-choice-img-box" style="width:56px; height:56px; flex-shrink:0; border-radius:6px; background:#FFFFFF;">';
+          html += '<div class="best-choice-img-box" style="width:56px; height:56px; flex-shrink:0; border-radius:8px; background:rgba(9,10,16,0.95);">';
           if (item.imageUrl) {
             html += '<img src="' + item.imageUrl + '" alt="' + escapeHtml(item.name) + '" style="width:100%; height:100%; object-fit:contain;">';
           } else {
